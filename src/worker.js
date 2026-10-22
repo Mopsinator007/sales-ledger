@@ -27,10 +27,9 @@ async function fetchStats(c, daysBack, chunk = 60) {
 }
 
 async function push(c, title, message) {
-  await fetch('https://api.pushover.net/1/messages.json', {
-    method: 'POST',
-    body: new URLSearchParams({ token: c.PUSHOVER_TOKEN, user: c.PUSHOVER_USER, title, message, sound: 'cashregister' }),
-  });
+  const body = { token: c.PUSHOVER_TOKEN, user: c.PUSHOVER_USER, title, message, html: '1', sound: 'cashregister' };
+  if (c.DASH_URL) { body.url = c.DASH_URL; body.url_title = 'Open dashboard'; }
+  await fetch('https://api.pushover.net/1/messages.json', { method: 'POST', body: new URLSearchParams(body) });
 }
 
 async function check(env) {
@@ -45,9 +44,15 @@ async function check(env) {
     if (!saved) continue; // first run: remember current numbers, no alerts
     const prev = saved[d.date] || { o: 0, s: 0, e: 0 };
     if (cur.o > prev.o) {
-      const n = cur.o - prev.o;
-      await push(c, `New sale${n > 1 ? 's' : ''}: +${usd(cur.e - prev.e)}`,
-        `${n} new order${n > 1 ? 's' : ''} worth ${usd(cur.s - prev.s)}.\nEarnings on ${d.date}: ${usd(cur.e)} (${cur.o} orders)`);
+      const n = cur.o - prev.o, per = (cur.e - prev.e) / n; // commission per new sale
+      const count = n > 10 ? 1 : n; // never spam more than 10 messages at once
+      const amount = count === 1 && n > 10 ? cur.e - prev.e : per;
+      for (let i = 0; i < count; i++) {
+        let msg = `<b>You earned <font color="#d4a017">${usd(amount)}</font> commission</b>\n` +
+                  `Today: <b>${usd(cur.e)}</b> from ${cur.o} sale${cur.o > 1 ? 's' : ''}`;
+        if (n > 1) msg += `\n<i>${n} sales came in together${n > 10 ? ', combined commission' : ', commission split evenly'}</i>`;
+        await push(c, `💰 New sale: +${usd(amount)}`, msg);
+      }
     }
   }
   await env.STATE.put('state', JSON.stringify(next));
@@ -70,7 +75,7 @@ export default {
     if (u.pathname === '/test') {
       const c = await getConfig(env);
       if (!c.DASH_KEY || u.searchParams.get('key') !== c.DASH_KEY) return new Response('unauthorized', { status: 401 });
-      await push(c, 'Sales Ledger', 'Pushover is working.');
+      await push(c, '💰 Sales Ledger', '<b>Pushover is <font color="#d4a017">working</font></b>\nYou will get one message per sale.');
       return new Response('Test message sent');
     }
     return env.ASSETS.fetch(req);
