@@ -14,7 +14,3 @@ crons = ["* * * * *"]
 binding = "STATE"
 id = "0751072594914e6caf4ffaeb44aaa667"
 
-[vars]
-AFF_BASE = "https://s2.affiliatly.com/af-1065200"
-AFF_ID = "91"
-TZ = "Europe/Berlin"
