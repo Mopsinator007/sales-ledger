@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#080706">
+<link rel="apple-touch-icon" href="/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Ledger">
 <title>Sales Ledger</title>
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,13 +19,20 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;background:ra
 .dust{position:fixed;inset:0;pointer-events:none}
 .dust i{position:absolute;width:2px;height:2px;border-radius:50%;background:var(--hi);box-shadow:0 0 6px var(--hi);opacity:.1;animation:tw 5s infinite}
 @keyframes tw{50%{opacity:.8}}
-nav.top{position:relative;display:flex;justify-content:space-between;align-items:center;padding:16px max(24px,6vw);border-bottom:1px solid var(--line)}
+nav.top{position:relative;display:flex;justify-content:space-between;align-items:center;padding:max(16px,env(safe-area-inset-top)) max(24px,6vw) 16px;border-bottom:1px solid var(--line)}
 .logo{font:500 26px Cormorant Garamond,Georgia,serif;color:var(--cream)}.logo b{color:var(--hi);font-size:14px;margin-right:10px;text-shadow:0 0 12px var(--hi)}
 .tr{display:flex;align-items:center;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream)}
 .eye{display:grid;place-items:center;width:40px;height:40px;margin-right:20px;background:transparent;border:1px solid var(--line);color:var(--cream);cursor:pointer;transition:.25s}
 .eye:hover,.eye[aria-pressed=true]{border-color:var(--gold);box-shadow:0 0 16px rgba(201,162,74,.45)}
 .eye svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-body.private #hero,body.private #today,body.private .stats b,body.private #svg{filter:blur(16px);user-select:none;pointer-events:none}
+body.private .cmp,body.private #gtxt,body.private .gsub,body.private .bar,body.private .rec b,body.private .rec small,body.private #hero,body.private #today,body.private .stats b,body.private #svg{filter:blur(16px);user-select:none;pointer-events:none}
+.cmp{font-size:16px;color:var(--hi);min-height:26px}.cmp.down{color:#d39a76}
+.goal{margin-top:52px}.gtop{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+#gtxt{font:400 28px Cormorant Garamond,Georgia,serif;color:var(--cream)}
+.bar{height:10px;border:1px solid var(--line);position:relative;margin-top:12px}
+.bar i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#8f6d24,#f6dc8f);box-shadow:0 0 16px rgba(232,197,106,.7);transition:width 1.2s}
+.gsub{margin-top:10px;font-size:15px}
+.rec{margin-top:36px}.stats small{display:block;font-size:14px}
 #hero,#today,.stats b,#svg{transition:filter .3s}
 #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--hi);box-shadow:0 0 10px var(--hi);margin-right:10px;animation:tw 2s infinite}
 #dot.err{background:#c0583a;box-shadow:0 0 10px #c0583a}
@@ -40,7 +50,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--hi);outline-off
 .arch{position:relative;width:min(420px,100%);aspect-ratio:1;margin:0 auto}
 .arch svg.ring{position:absolute;inset:0;width:100%;height:100%;animation:spin 90s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.door{position:absolute;left:25%;right:25%;top:21%;bottom:20%;border:1px solid var(--gold);border-bottom:0;border-radius:999px 999px 0 0;background:linear-gradient(#120e08,#0b0906);box-shadow:0 0 34px rgba(201,162,74,.28),inset 0 0 40px rgba(201,162,74,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.door{position:absolute;left:25%;right:25%;top:21%;bottom:20%;border:1px solid var(--gold);border-bottom:0;border-radius:999px 999px 0 0;background:linear-gradient(to top,rgba(201,162,74,.3) var(--fill,0%),transparent var(--fill,0%)),linear-gradient(#120e08,#0b0906);box-shadow:0 0 34px rgba(201,162,74,.28),inset 0 0 40px rgba(201,162,74,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 #today{font:500 clamp(32px,5vw,50px)/1 Cormorant Garamond,Georgia,serif;color:var(--hi);text-shadow:0 0 22px rgba(232,197,106,.6)}
 .door small{font-size:11px;letter-spacing:.24em;text-transform:uppercase;margin-top:8px}
 .badge{position:absolute;left:8%;bottom:19%;display:flex;align-items:center;background:#0a0806;border:1px solid var(--line);padding:9px 14px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream)}
@@ -68,6 +78,7 @@ svg#svg{width:100%;height:170px;display:block;filter:drop-shadow(0 0 8px rgba(23
 <div>
 <div class="eyebrow" id="cap">Commission earned</div>
 <div id="hero">$0.00</div>
+<div class="cmp" id="cmp"></div>
 <p class="sub">Your affiliate commission, tracked live from every referred sale.</p>
 <div class="btns" id="tabs" role="group" aria-label="Time period"></div>
 </div>
@@ -77,17 +88,22 @@ svg#svg{width:100%;height:170px;display:block;filter:drop-shadow(0 0 8px rgba(23
 <div class="badge"><span id="dot2" style="width:8px;height:8px;border-radius:50%;background:var(--hi);box-shadow:0 0 10px var(--hi);margin-right:10px"></span>Tracking live</div>
 </div>
 </section>
+<section class="goal"><div class="gtop"><span class="lbl">Monthly goal</span><span id="gtxt"></span></div><div class="bar"><i id="gbar"></i></div><div class="gsub" id="gsub"></div></section>
 <section class="stats">
 <div><span class="lbl">Sales volume</span><b id="s-sales">–</b></div>
 <div><span class="lbl">Orders</span><b id="s-orders">–</b></div>
 <div><span class="lbl">Visits</span><b id="s-visits">–</b></div>
 <div><span class="lbl">Conversion</span><b id="s-conv">–</b></div>
 </section>
+<section class="stats rec">
+<div><span class="lbl">Top month</span><b id="r-month">–</b><small id="r-month2"></small></div>
+<div><span class="lbl">Best day</span><b id="r-day">–</b><small id="r-day2"></small></div>
+</section>
 <section class="chart"><span class="lbl" id="ccap">Commission per day</span><svg id="svg" viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Commission per day"></svg><div class="axis"><span id="a1"></span><span id="a2"></span></div></section>
 </div>
 </main>
 <script>
-const $=s=>document.querySelector(s),P=[1,7,30,'M',90,365];
+const $=s=>document.querySelector(s),P=[1,7,30,'M',90,365],GOAL=1000;
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
 const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',EYEOFF=EYE.replace('</svg>','<path d="M3 3l18 18"/></svg>');
 function setPriv(p){document.body.classList.toggle('private',p);const e=$('#eye');e.innerHTML=p?EYEOFF:EYE;e.setAttribute('aria-pressed',p);e.setAttribute('aria-label',p?'Show amounts':'Hide amounts');store.set('priv',p?'1':'0')}
@@ -108,6 +124,21 @@ function render(){
  count(earn);$('#today').textContent=usd(days[0].earn);
  $('#s-sales').textContent=usd(sum('sales'));$('#s-orders').textContent=orders.toLocaleString('en-US');
  $('#s-visits').textContent=visits.toLocaleString('en-US');$('#s-conv').textContent=visits?(orders/visits*100).toFixed(1)+'%':'–';
+
+ const sm=a=>a.reduce((x,d)=>x+d.earn,0),m0=days[0].t.slice(0,7),mtd=sm(days.filter(d=>d.t.startsWith(m0))),dom=+days[0].t.slice(8),dim=new Date(+m0.slice(0,4),+m0.slice(5),0).getDate(),pct=Math.min(100,mtd/GOAL*100),pace=mtd/dom*dim;
+ $('#gtxt').textContent=`${usd(mtd)} of ${usd(GOAL)}`;$('#gbar').style.width=pct+'%';$('.door').style.setProperty('--fill',pct+'%');
+ $('#gsub').textContent=(mtd>=GOAL?'Goal reached! ':`${pct.toFixed(0)}% done. `)+`On pace for ${usd(pace)} this month.`;
+ let prev=null,lab='';
+ if(period==='M'){const d=new Date(+m0.slice(0,4),+m0.slice(5)-2,1),pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');prev=sm(days.filter(x=>x.t.startsWith(pm)&&+x.t.slice(8)<=N));lab='the same days last month'}
+ else if(days.length>=2*period){prev=sm(days.slice(period,2*period));lab=period===1?'yesterday':`the previous ${period} days`}
+ const cm=$('#cmp');
+ if(prev===null||(prev===0&&earn===0)){cm.textContent=''}
+ else if(prev===0){cm.className='cmp';cm.textContent=`▲ Up from $0.00 in ${lab}`}
+ else{const ch=(earn-prev)/prev*100;cm.className='cmp'+(ch<0?' down':'');cm.textContent=`${ch>=0?'▲':'▼'} ${Math.abs(ch).toFixed(0)}% vs ${lab} (${usd(prev)})`}
+ const mon={};days.forEach(d=>{const m=d.t.slice(0,7);mon[m]=(mon[m]||0)+d.earn});
+ const [bm,be]=Object.entries(mon).sort((a,b)=>b[1]-a[1])[0],bd=days.reduce((a,d)=>d.earn>a.earn?d:a,days[0]);
+ $('#r-month').textContent=be>0?usd(be):'–';$('#r-month2').textContent=be>0?new Date(+bm.slice(0,4),+bm.slice(5)-1,1).toLocaleString('en-US',{month:'long',year:'numeric'})+(bm===m0?', this month':''):'';
+ $('#r-day').textContent=bd.earn>0?usd(bd.earn):'–';$('#r-day2').textContent=bd.earn>0?new Date(bd.t+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
  const n=Math.max(N,7),c=days.slice(0,n).reverse(),max=Math.max(...c.map(d=>d.earn),1),w=1000/n;
  $('#svg').innerHTML='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dc8f"/><stop offset="1" stop-color="#8f6d24"/></linearGradient></defs>'+
   c.map((d,i)=>{const h=Math.max(d.earn/max*156,d.earn>0?3:1.5);return `<rect x="${i*w+w*.15}" y="${170-h}" width="${w*.7}" height="${h}" fill="url(#g)" opacity="${d.earn>0?1:.3}"><title>${d.t}: ${usd(d.earn)}</title></rect>`}).join('');
@@ -126,6 +157,7 @@ async function load(){
 }
 $('#keybox').onsubmit=e=>{e.preventDefault();store.set('key',$('#keyin').value);load()};
 load();setInterval(load,30000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 </script>
 </body>
 </html>
