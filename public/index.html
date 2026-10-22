@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sales</title>
+<title>Sales Ledger</title>
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,12 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;background:ra
 @keyframes tw{50%{opacity:.8}}
 nav.top{position:relative;display:flex;justify-content:space-between;align-items:center;padding:16px max(24px,6vw);border-bottom:1px solid var(--line)}
 .logo{font:500 26px Cormorant Garamond,Georgia,serif;color:var(--cream)}.logo b{color:var(--hi);font-size:14px;margin-right:10px;text-shadow:0 0 12px var(--hi)}
-.tr{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream)}
+.tr{display:flex;align-items:center;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream)}
+.eye{display:grid;place-items:center;width:40px;height:40px;margin-right:20px;background:transparent;border:1px solid var(--line);color:var(--cream);cursor:pointer;transition:.25s}
+.eye:hover,.eye[aria-pressed=true]{border-color:var(--gold);box-shadow:0 0 16px rgba(201,162,74,.45)}
+.eye svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+body.private #hero,body.private #today,body.private .stats b,body.private #svg{filter:blur(16px);user-select:none;pointer-events:none}
+#hero,#today,.stats b,#svg{transition:filter .3s}
 #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--hi);box-shadow:0 0 10px var(--hi);margin-right:10px;animation:tw 2s infinite}
 #dot.err{background:#c0583a;box-shadow:0 0 10px #c0583a}
 main{position:relative;max-width:1240px;margin:0 auto;padding:56px max(24px,6vw) 64px}
@@ -55,7 +60,7 @@ svg#svg{width:100%;height:170px;display:block;filter:drop-shadow(0 0 8px rgba(23
 </head>
 <body>
 <div class="dust" id="dust" aria-hidden="true"></div>
-<nav class="top"><span class="logo"><b>◆</b>Sales Ledger</span><span class="tr"><span id="dot"></span><span id="stxt">Loading…</span></span></nav>
+<nav class="top"><span class="logo"><b>◆</b>Sales Ledger</span><span class="tr"><button class="eye" id="eye" type="button" aria-pressed="false" aria-label="Hide amounts"></button><span id="dot"></span><span id="stxt">Loading…</span></span></nav>
 <main>
 <form id="keybox"><input id="keyin" type="password" placeholder="Enter your dashboard key" autocomplete="current-password"><button>Unlock</button></form>
 <div id="app">
@@ -84,6 +89,10 @@ svg#svg{width:100%;height:170px;display:block;filter:drop-shadow(0 0 8px rgba(23
 <script>
 const $=s=>document.querySelector(s),P=[1,7,30,'M',90,365];
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',EYEOFF=EYE.replace('</svg>','<path d="M3 3l18 18"/></svg>');
+function setPriv(p){document.body.classList.toggle('private',p);const e=$('#eye');e.innerHTML=p?EYEOFF:EYE;e.setAttribute('aria-pressed',p);e.setAttribute('aria-label',p?'Show amounts':'Hide amounts');store.set('priv',p?'1':'0')}
+$('#eye').onclick=()=>setPriv(!document.body.classList.contains('private'));
+setPriv(store.get('priv')==='1');
 let days=[],sp=store.get('period'),period=sp==='M'?'M':(P.includes(+sp)?+sp:7),shown=0,first=true;
 const usd=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const setStatus=(t,e)=>{$('#stxt').textContent=t;$('#dot').className=e?'err':''};
