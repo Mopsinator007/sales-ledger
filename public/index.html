@@ -115,6 +115,8 @@ svg#svg.anim rect{transform-box:fill-box;transform-origin:bottom;animation:grow 
 @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 @keyframes sweep{60%,100%{transform:translateX(100%)}}
 @keyframes glow{50%{box-shadow:0 40px 90px -30px rgba(0,0,0,.55),0 0 110px -10px rgba(255,61,61,.3)}}
+/* big numbers never wrap; JS shrinks them to fit */
+#hero,#today,.stats b,#gtxt{white-space:nowrap;overflow-wrap:normal;width:max-content;max-width:none}
 </style>
 </head>
 <body>
@@ -165,7 +167,10 @@ const usd=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFracti
 const setStatus=(t,e)=>{$('#stxt').textContent=t;$('#dot').className=e?'err':''};
 $('#tabs').innerHTML=P.map(p=>`<button data-p="${p}" aria-pressed="${p===period}">${p==='M'?'This month':p+' day'+(p>1?'s':'')}</button>`).join('');
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;period=b.dataset.p==='M'?'M':+b.dataset.p;store.set('period',period);document.querySelectorAll('#tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()};
-function count(to){const from=shown,t0=performance.now(),d=first?1400:700;first=false;
+function fit(el,avail){el.style.fontSize='';const w=el.offsetWidth;if(w>avail&&avail>0)el.style.fontSize=(parseFloat(getComputedStyle(el).fontSize)*avail/w*.97)+'px'}
+function fitAll(){const fr=$('.vf-frame').clientWidth-56;fit($('#today'),fr);document.querySelectorAll('.stats b').forEach(b=>fit(b,b.parentElement.clientWidth-52));fit($('#gtxt'),$('#gtxt').parentElement.clientWidth)}
+addEventListener('resize',()=>{fit($('#hero'),$('#hero').parentElement.clientWidth);fitAll()});
+function count(to){const h=$('#hero');h.textContent=usd(to);fit(h,h.parentElement.clientWidth);const from=shown,t0=performance.now(),d=first?1400:700;first=false;
  (function f(t){const k=Math.min(1,(t-t0)/d),e=1-Math.pow(1-k,3);shown=from+(to-from)*e;$('#hero').textContent=usd(shown);if(k<1)requestAnimationFrame(f);else shown=to})(t0)}
 function render(){
  if(!days.length)return;
@@ -193,7 +198,7 @@ function render(){
  const n=Math.max(N,7),c=days.slice(0,n).reverse(),max=Math.max(...c.map(d=>d.earn),1),w=1000/n;
  $('#svg').innerHTML='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3d3d"/><stop offset="1" stop-color="#8a1218"/></linearGradient></defs>'+
   c.map((d,i)=>{const h=Math.max(d.earn/max*156,d.earn>0?3:1.5);return `<rect x="${i*w+w*.15}" y="${170-h}" width="${w*.7}" height="${h}" fill="url(#g)" style="animation-delay:${Math.min(i*14,500)}ms" opacity="${d.earn>0?1:.3}"><title>${d.t}: ${usd(d.earn)}</title></rect>`}).join('');
- $('#ccap').textContent=period==='M'&&N>=7?'Commission per day, this month':`Commission per day, last ${n} days`;$('#a1').textContent=c[0].t;$('#a2').textContent=c[c.length-1].t;
+ $('#ccap').textContent=period==='M'&&N>=7?'Commission per day, this month':`Commission per day, last ${n} days`;fitAll();$('#a1').textContent=c[0].t;$('#a2').textContent=c[c.length-1].t;
 }
 async function load(){
  try{
