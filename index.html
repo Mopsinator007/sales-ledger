@@ -42,6 +42,7 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 .eye:hover,.eye[aria-pressed=true]{border-color:var(--red);color:var(--red)}
 .eye svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 body.private .cmp,body.private #gtxt,body.private .gsub,body.private .bar,body.private .rec b,body.private .rec small,body.private #hero,body.private #today,body.private .stats b,body.private #svg{filter:blur(16px);user-select:none;pointer-events:none}
+body.private #tip{display:none}
 #hero,#today,.stats b,#svg{transition:filter .3s}
 
 .hero{padding:clamp(40px,6vw,80px) 0 clamp(48px,7vw,90px);border-top:0;position:relative}
@@ -74,8 +75,19 @@ body.private .cmp,body.private #gtxt,body.private .gsub,body.private .bar,body.p
 .stats div{padding:6px 20px 6px 0}.stats div+div{padding-left:22px;border-left:1px solid var(--line)}
 .stats b{display:block;font:800 clamp(28px,3.4vw,42px)/1.15 var(--disp);font-stretch:110%;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin-top:4px}
 .stats small{display:block;font:400 15px var(--mono);color:var(--muted)}
-svg#svg{width:100%;height:170px;display:block;margin-top:14px}
+svg#svg{width:100%;height:170px;display:block;touch-action:pan-y;cursor:crosshair}
+.cwrap{position:relative;margin-top:14px}
 .axis{display:flex;justify-content:space-between;font:400 12px var(--mono);color:var(--muted);margin-top:8px}
+
+/* bar hover card */
+#tip{position:absolute;z-index:6;left:0;top:0;min-width:210px;padding:12px 14px 10px;background:rgba(12,12,14,.97);border:1px solid var(--line2);box-shadow:0 18px 40px -14px rgba(0,0,0,.8),0 0 30px -12px var(--glow);font:500 13px/1.55 var(--mono);pointer-events:none;opacity:0;transition:opacity .12s;white-space:nowrap}
+#tip.on{opacity:1}
+#tip .d{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#tip b{display:block;margin:2px 0 8px;font:800 24px/1.1 var(--disp);font-stretch:110%;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink)}
+#tip .r{display:flex;justify-content:space-between;gap:22px;color:var(--muted)}
+#tip .r span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
+#tip .up{color:var(--red)!important}
+#tip .star{margin-top:6px;color:var(--red);font-size:12px;letter-spacing:.06em}
 
 [hidden]{display:none!important}
 .hero{overflow-x:clip} /* the decorative glow (.spot) pokes 10% past the right edge and widened the page on phones */
@@ -102,7 +114,6 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .bar i{overflow:hidden}
 .bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:translateX(-100%);animation:sweep 3s ease-in-out infinite}
 svg#svg rect{transition:filter .2s}
-svg#svg rect:hover{filter:brightness(1.4)}
 svg#svg.anim rect{transform-box:fill-box;transform-origin:bottom;animation:grow .7s cubic-bezier(.2,.7,.2,1) both}
 .vf-frame{animation:glow 4.5s ease-in-out infinite}
 .read small::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:10px;animation:ping 2s infinite}
@@ -155,6 +166,7 @@ main{padding-bottom:env(safe-area-inset-bottom)}
  .stats b{font-size:26px}
  svg#svg{height:140px}
  .axis{font-size:11px}
+ #tip{min-width:190px;font-size:12px}
  #emsg{margin:32px 0}
 }
 </style>
@@ -191,10 +203,10 @@ main{padding-bottom:env(safe-area-inset-bottom)}
 <div><span class="lbl">Conversion</span><b id="s-conv">–</b></div>
 </div></section>
 <section><div class="wrap stats rec">
-<div><span class="lbl">Top month</span><b id="r-month">–</b><small id="r-month2"></small></div>
-<div><span class="lbl">Best day</span><b id="r-day">–</b><small id="r-day2"></small></div>
+<div><span class="lbl" id="l-month">Top month</span><b id="r-month">–</b><small id="r-month2"></small></div>
+<div><span class="lbl" id="l-day">Best day</span><b id="r-day">–</b><small id="r-day2"></small></div>
 </div></section>
-<section class="chart"><div class="wrap"><span class="lbl" id="ccap">Commission per day</span><svg id="svg" viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Commission per day"></svg><div class="axis"><span id="a1"></span><span id="a2"></span></div></div></section>
+<section class="chart"><div class="wrap"><span class="lbl" id="ccap">Commission per day</span><div class="cwrap"><svg id="svg" viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Commission per day"></svg><div id="tip" role="status" aria-live="polite"></div></div><div class="axis"><span id="a1"></span><span id="a2"></span></div></div></section>
 </div>
 </main>
 <script>
@@ -205,46 +217,109 @@ const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10
 function setPriv(p){document.body.classList.toggle('private',p);const e=$('#eye');e.innerHTML=p?EYEOFF:EYE;e.setAttribute('aria-pressed',p);e.setAttribute('aria-label',p?'Show amounts':'Hide amounts');store.set('priv',p?'1':'0')}
 $('#eye').onclick=()=>setPriv(!document.body.classList.contains('private'));
 setPriv(store.get('priv')==='1');
-let days=[],sp=store.get('period'),period=sp==='M'?'M':(P.includes(+sp)?+sp:7),shown=0,first=true;
+
+/* data: `map` holds every row Affiliatly sent (key yyyy-mm-dd); `days` is a gap-free calendar, newest first,
+   with 0 for days that have no row, so "last 30 days" always means 30 calendar days. */
+const HISTORY=400,sv=$('#svg'),tip=$('#tip');
+let map={},days=[],cover='',ctx={avg:0,bestT:'',bestE:0,from:''},view=[],hov=-1,tick=0,
+ sp=store.get('period'),period=sp==='M'?'M':(P.includes(+sp)?+sp:7),shown=0,first=true,me=null;
 const usd=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const setStatus=(t,e)=>{$('#stxt').textContent=t;$('#dot').className=e?'err':''};
+const addDays=(t,n)=>{const[y,m,d]=t.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10)};
+const fmtLong=t=>new Date(t+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+const fmtShort=(t,y)=>new Date(t+'T00:00:00').toLocaleDateString('en-US',y?{month:'short',day:'numeric',year:'numeric'}:{month:'short',day:'numeric'});
+function todayStr(){ // "today" in the account's timezone, so it flips at the right midnight
+ let o={day:'2-digit',month:'2-digit',year:'numeric'};if(me&&me.tz)o.timeZone=me.tz;
+ let p;try{p=new Intl.DateTimeFormat('en-GB',o).formatToParts(new Date())}catch(e){delete o.timeZone;p=new Intl.DateTimeFormat('en-GB',o).formatToParts(new Date())}
+ p=Object.fromEntries(p.map(x=>[x.type,x.value]));return`${p.year}-${p.month}-${p.day}`}
+function rebuild(){
+ const keys=Object.keys(map).sort();let top=todayStr();
+ if(keys.length&&keys[keys.length-1]>top)top=keys[keys.length-1];
+ cover=keys.length?keys[0]:top;
+ days=[];for(let i=0;i<HISTORY;i++){const t=addDays(top,-i);days.push(map[t]||{t,orders:0,visits:0,sales:0,earn:0})}
+}
+
 $('#tabs').innerHTML=P.map(p=>`<button data-p="${p}" aria-pressed="${p===period}">${p==='M'?'This month':p+' day'+(p>1?'s':'')}</button>`).join('');
-$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;period=b.dataset.p==='M'?'M':+b.dataset.p;store.set('period',period);document.querySelectorAll('#tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()};
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;period=b.dataset.p==='M'?'M':+b.dataset.p;store.set('period',period);document.querySelectorAll('#tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));hide();render()};
 function fit(el,avail){el.style.fontSize='';const w=el.offsetWidth;if(w>avail&&avail>0)el.style.fontSize=(parseFloat(getComputedStyle(el).fontSize)*avail/w*.97)+'px'}
 function fitAll(){const fr=$('.vf-frame').clientWidth-56;fit($('#today'),fr);document.querySelectorAll('.stats b').forEach(b=>fit(b,b.parentElement.clientWidth-52));fit($('#gtxt'),$('#gtxt').parentElement.clientWidth)}
-addEventListener('resize',()=>{fit($('#hero'),$('#hero').parentElement.clientWidth);fitAll()});
+addEventListener('resize',()=>{fit($('#hero'),$('#hero').parentElement.clientWidth);fitAll();if(hov>=0)show(hov)});
 function count(to){const h=$('#hero');h.textContent=usd(to);fit(h,h.parentElement.clientWidth);const from=shown,t0=performance.now(),d=first?1400:700;first=false;
  (function f(t){const k=Math.min(1,(t-t0)/d),e=1-Math.pow(1-k,3);shown=from+(to-from)*e;$('#hero').textContent=usd(shown);if(k<1)requestAnimationFrame(f);else shown=to})(t0)}
+
+/* bar hover card */
+function show(i){
+ const b=view[i];if(!b)return;hov=i;
+ const nb=view.length,rc=sv.getBoundingClientRect(),cw=sv.parentElement.clientWidth,hl=$('#hl');
+ if(hl){hl.setAttribute('x',i*1000/nb);hl.setAttribute('width',1000/nb);hl.setAttribute('opacity',1)}
+ const row=(k,v)=>`<div class="r"><span>${k}</span><span>${v}</span></div>`,
+  conv=b.visits?(b.orders/b.visits*100).toFixed(1)+'%':'–',base=ctx.avg*b.n,vs=base>0?(b.earn-base)/base*100:null,
+  star=b.n===1&&b.earn>0&&b.earn===ctx.bestE&&b.from===ctx.bestT;
+ tip.innerHTML=`<div class="d">${b.n===1?fmtLong(b.from):fmtShort(b.from)+' – '+fmtShort(b.to,true)}</div><b>${usd(b.earn)}</b>`
+  +row('Orders',b.orders.toLocaleString('en-US'))+row('Visits',b.visits.toLocaleString('en-US'))+row('Sales volume',usd(b.sales))+row('Conversion',conv)
+  +(b.n>1?row('Avg per day',usd(b.earn/b.n)):'')
+  +(vs===null?'':`<div class="r"><span>vs period avg</span><span class="${vs>=0?'up':''}">${vs>=0?'▲':'▼'} ${Math.abs(vs).toFixed(0)}%</span></div>`)
+  +(star?'<div class="star">★ Best day of this period</div>':'');
+ tip.classList.add('on');
+ const tw=tip.offsetWidth,th=tip.offsetHeight,x=(i+.5)/nb*rc.width;
+ tip.style.left=Math.max(0,Math.min(cw-tw,x-tw/2))+'px';tip.style.top=(-th-10)+'px';
+}
+function hide(){hov=-1;tip.classList.remove('on');const hl=$('#hl');if(hl)hl.setAttribute('opacity',0)}
+const idxAt=e=>{const r=sv.getBoundingClientRect();return Math.max(0,Math.min(view.length-1,Math.floor((e.clientX-r.left)/r.width*view.length)))};
+sv.addEventListener('pointermove',e=>{if(view.length)show(idxAt(e))});
+sv.addEventListener('pointerdown',e=>{if(view.length)show(idxAt(e))});
+sv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hide()});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#svg'))hide()});
+
 function render(){
  if(!days.length)return;
- const N=period==='M'?days.filter(d=>d.t.startsWith(days[0].t.slice(0,7))).length:period,s=days.slice(0,N),sum=k=>s.reduce((a,d)=>a+d[k],0),earn=sum('earn'),orders=sum('orders'),visits=sum('visits');
+ const sm=a=>a.reduce((x,d)=>x+d.earn,0),m0=days[0].t.slice(0,7),dom=+days[0].t.slice(8);
+ const N=period==='M'?dom:period,s=days.slice(0,N),sum=k=>s.reduce((a,d)=>a+d[k],0),earn=sum('earn'),orders=sum('orders'),visits=sum('visits');
+ const pl=period===1?'today':period==='M'?'this month':`last ${period} days`;
+
+ /* hero + stat cards: everything follows the selected period */
  $('#cap').textContent=period===1?'Commission earned today':period==='M'?'Commission this month':`Commission, last ${period} days`;
  count(earn);$('#today').textContent=usd(days[0].earn);
  $('#s-sales').textContent=usd(sum('sales'));$('#s-orders').textContent=orders.toLocaleString('en-US');
  $('#s-visits').textContent=visits.toLocaleString('en-US');$('#s-conv').textContent=visits?(orders/visits*100).toFixed(1)+'%':'–';
 
- const sm=a=>a.reduce((x,d)=>x+d.earn,0),m0=days[0].t.slice(0,7),mtd=sm(days.filter(d=>d.t.startsWith(m0))),dom=+days[0].t.slice(8),dim=new Date(+m0.slice(0,4),+m0.slice(5),0).getDate(),pct=Math.min(100,mtd/GOAL*100),pace=mtd/dom*dim;
+ /* monthly goal always tracks the current calendar month */
+ const mtd=sm(days.filter(d=>d.t.startsWith(m0))),dim=new Date(+m0.slice(0,4),+m0.slice(5),0).getDate(),pct=Math.min(100,mtd/GOAL*100),pace=mtd/dom*dim;
  $('#gtxt').textContent=`${usd(mtd)} of ${usd(GOAL)}`;$('#gbar').style.width=pct+'%';$('#fillbg').style.setProperty('--fill',pct+'%');
  $('#gsub').textContent=(mtd>=GOAL?'Goal reached! ':`${pct.toFixed(0)}% done. `)+`On pace for ${usd(pace)} this month.`;
+
+ /* comparison with the matching earlier stretch (hidden when we don't have that history) */
  let prev=null,lab='';
- if(period==='M'){const d=new Date(+m0.slice(0,4),+m0.slice(5)-2,1),pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');prev=sm(days.filter(x=>x.t.startsWith(pm)&&+x.t.slice(8)<=N));lab='the same days last month'}
- else if(days.length>=2*period){prev=sm(days.slice(period,2*period));lab=period===1?'yesterday':`the previous ${period} days`}
- const cm=$('#cmp');
+ if(period==='M'){const d=new Date(+m0.slice(0,4),+m0.slice(5)-2,1),pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  if(cover<=pm+'-01'){prev=sm(days.filter(x=>x.t.startsWith(pm)&&+x.t.slice(8)<=N));lab='the same days last month'}}
+ else if(2*period<=days.length&&cover<=days[2*period-1].t){prev=sm(days.slice(period,2*period));lab=period===1?'yesterday':`the previous ${period} days`}
+ const cm=$('#cmp');cm.className='cmp';
  if(prev===null||(prev===0&&earn===0)){cm.textContent=''}
- else if(prev===0){cm.className='cmp';cm.textContent=`▲ Up from $0.00 in ${lab}`}
+ else if(prev===0){cm.textContent=`▲ Up from $0.00 in ${lab}`}
  else{const ch=(earn-prev)/prev*100;cm.className='cmp'+(ch<0?' down':'');cm.textContent=`${ch>=0?'▲':'▼'} ${Math.abs(ch).toFixed(0)}% vs ${lab} (${usd(prev)})`}
- const mon={};days.forEach(d=>{const m=d.t.slice(0,7);mon[m]=(mon[m]||0)+d.earn});
- const [bm,be]=Object.entries(mon).sort((a,b)=>b[1]-a[1])[0],bd=days.reduce((a,d)=>d.earn>a.earn?d:a,days[0]);
+
+ /* records: top month over the last 12 months, best day inside the selected period */
+ const mon={};days.slice(0,365).forEach(d=>{const m=d.t.slice(0,7);mon[m]=(mon[m]||0)+d.earn});
+ const [bm,be]=Object.entries(mon).sort((a,b)=>b[1]-a[1])[0],bd=s.reduce((a,d)=>d.earn>a.earn?d:a,s[0]);
+ $('#l-month').textContent='Top month · last 12 months';
  $('#r-month').textContent=be>0?usd(be):'–';$('#r-month2').textContent=be>0?new Date(+bm.slice(0,4),+bm.slice(5)-1,1).toLocaleString('en-US',{month:'long',year:'numeric'})+(bm===m0?', this month':''):'';
- $('#r-day').textContent=bd.earn>0?usd(bd.earn):'–';$('#r-day2').textContent=bd.earn>0?new Date(bd.t+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
- const ak=String(period);$('#svg').classList.toggle('anim',ak!==window._ak);window._ak=ak;
- const n=Math.max(N,7),c=days.slice(0,n).reverse(),max=Math.max(...c.map(d=>d.earn),1),w=1000/n;
- $('#svg').innerHTML='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3d3d"/><stop offset="1" stop-color="#8a1218"/></linearGradient></defs>'+
-  c.map((d,i)=>{const h=Math.max(d.earn/max*156,d.earn>0?3:1.5);return `<rect x="${i*w+w*.15}" y="${170-h}" width="${w*.7}" height="${h}" fill="url(#g)" style="animation-delay:${Math.min(i*14,500)}ms" opacity="${d.earn>0?1:.3}"><title>${d.t}: ${usd(d.earn)}</title></rect>`}).join('');
- $('#ccap').textContent=period==='M'&&N>=7?'Commission per day, this month':`Commission per day, last ${n} days`;fitAll();$('#a1').textContent=c[0].t;$('#a2').textContent=c[c.length-1].t;
+ $('#l-day').textContent='Best day · '+pl;
+ $('#r-day').textContent=bd.earn>0?usd(bd.earn):'–';$('#r-day2').textContent=bd.earn>0?fmtShort(bd.t,true):'';
+
+ /* chart: one bar per day; the 365 view uses one bar per week so it stays readable */
+ const ak=String(period);sv.classList.toggle('anim',ak!==window._ak);window._ak=ak;
+ const weekly=period===365,n=weekly?364:Math.max(N,7),B=weekly?7:1,c=days.slice(0,n).reverse();
+ view=[];for(let i=0;i<c.length;i+=B){const g=c.slice(i,i+B),t=k=>g.reduce((a,d)=>a+d[k],0);view.push({from:g[0].t,to:g[g.length-1].t,n:g.length,earn:t('earn'),orders:t('orders'),visits:t('visits'),sales:t('sales')})}
+ ctx={avg:earn/N,bestT:bd.t,bestE:bd.earn};
+ const nb=view.length,max=Math.max(...view.map(b=>b.earn),1),w=1000/nb;
+ sv.innerHTML='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3d3d"/><stop offset="1" stop-color="#8a1218"/></linearGradient></defs>'+
+  '<rect id="hl" x="0" y="0" width="0" height="170" fill="rgba(255,255,255,.09)" opacity="0" style="animation:none;pointer-events:none"/>'+
+  view.map((b,i)=>{const h=Math.max(b.earn/max*156,b.earn>0?3:1.5);return `<rect x="${i*w+w*.15}" y="${170-h}" width="${w*.7}" height="${h}" fill="url(#g)" style="animation-delay:${Math.min(i*14,500)}ms;pointer-events:none" opacity="${b.earn>0?1:.3}"/>`}).join('');
+ $('#ccap').textContent=weekly?'Commission per week, last 52 weeks':period==='M'&&N>=7?'Commission per day, this month':`Commission per day, last ${n} days`;
+ fitAll();$('#a1').textContent=fmtShort(view[0].from,true);$('#a2').textContent=fmtShort(view[nb-1].to,true);
+ if(hov>=0)show(Math.min(hov,nb-1));
 }
 const toLogin=()=>location.replace('/login');
-let me=null;
 async function loadMe(){
  const r=await fetch('/api/me',{cache:'no-store'});
  if(r.status===401){toLogin();return false}
@@ -259,11 +334,15 @@ async function loadMe(){
 async function load(){
  try{
   if(!me&&!(await loadMe()))return;
-  const r=await fetch('/api/stats',{cache:'no-store'});
+  const full=!days.length||tick%60===0;tick++;      // full year on start (and every ~30 min); quick 35-day refresh in between
+  const r=await fetch('/api/stats?days='+(full?HISTORY:35),{cache:'no-store'});
   if(r.status===401){toLogin();return}
   if(!r.ok){let m='Error '+r.status;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}
   const j=await r.json();
-  days=Object.values(j).map(d=>{const [dd,mm,yy]=d.date.split('.');return{t:`${yy}-${mm}-${dd}`,orders:+d.orders,visits:+d.visits,sales:+d.sum_price_clean,earn:+d.sum_earnings_clean}}).sort((a,b)=>a.t<b.t?1:-1);
+  if(full)map={};
+  Object.values(j).forEach(d=>{if(!d||typeof d.date!=='string')return;const[dd,mm,yy]=d.date.split('.');if(!yy)return;
+   map[`${yy}-${mm}-${dd}`]={t:`${yy}-${mm}-${dd}`,orders:+d.orders||0,visits:+d.visits||0,sales:+d.sum_price_clean||0,earn:+d.sum_earnings_clean||0}});
+  rebuild();
   $('#emsg').hidden=true;$('#app').hidden=false;render();
   setStatus('Live, updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
  }catch(e){
