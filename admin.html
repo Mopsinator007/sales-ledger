@@ -205,7 +205,7 @@ async function load(){
  }catch(e){
   if(e.auth){
    $('#panel').hidden=true;$('#keyform').hidden=false;
-   if(key){$('#kerr').textContent='That key didn’t work.';key=null;try{sessionStorage.removeItem('adminkey')}catch(x){}}
+   if(key){$('#kerr').textContent=e.message;key=null;try{sessionStorage.removeItem('adminkey')}catch(x){}}
   }else if(!$('#keyform').hidden){$('#kerr').textContent=e.message}
   else toast(e.message,true);
  }
