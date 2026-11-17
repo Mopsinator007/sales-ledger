@@ -327,29 +327,62 @@ const ymd = (tz, d) => {
   return `${p.year}-${p.month}-${p.day}`;
 };
 
-/** Fetches `days` days of history. With {from}/{to} in AFF_URL it asks in 30-day chunks (in case Affiliatly caps the range) and merges them. */
+const addIso = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const r2 = n => Math.round(n * 100) / 100;
+
+/*
+ * Affiliatly's report returns one row PER ORDER:
+ *   { id, id_order, is_paid, price, earnings, date: '2026-11-15 21:00:18', ... }
+ * `earnings` is already the affiliate's commission and counts whether or not it has been paid out
+ * yet, so is_paid is deliberately ignored. Orders are grouped here into one row per calendar day
+ * (using the date exactly as Affiliatly prints it) in the shape the site expects.
+ */
+const isOrderLevel = rows => rows.some(r => r && (r.id_order !== undefined || (r.earnings !== undefined && r.orders === undefined)));
+
+function toDays(raw) {
+  if (isOrderLevel(raw)) {
+    const seen = new Set(), by = new Map();
+    for (const r of raw) {
+      const id = r.id ?? r.id_order;
+      if (id !== undefined) { if (seen.has(id)) continue; seen.add(id); }   // ranges overlap by a day, so never count an order twice
+      const d = normDate(r.date);
+      if (!d.iso) continue;
+      const e = by.get(d.iso) || { date: d.date, iso: d.iso, orders: 0, visits: 0, sum_price_clean: 0, sum_earnings_clean: 0 };
+      e.orders += 1;
+      e.sum_price_clean += num(r.price);
+      e.sum_earnings_clean += num(r.earnings);
+      by.set(d.iso, e);
+    }
+    return [...by.values()].map(e => ({ ...e, sum_price_clean: r2(e.sum_price_clean), sum_earnings_clean: r2(e.sum_earnings_clean) }));
+  }
+  const by = new Map();                                                      // already one row per day
+  for (const r of raw.map(normRow)) by.set(r.iso || r.date, r);
+  return [...by.values()];
+}
+
+/** Fetches `days` days of history. With {from}/{to} in AFF_URL it asks in 28-day chunks (in case Affiliatly caps the range) and merges them. */
 async function affiliatlyDays(a, env, debug = false, days = 365) {
-  if (!env.AFF_URL || !env.AFF_URL.includes('{from}')) return fetchRange(a, env, '', '', debug);
+  if (!env.AFF_URL || !env.AFF_URL.includes('{from}')) return toDays(await fetchRange(a, env, '', '', debug));
   const tz = a.tz || env.TZ || 'UTC';
-  const DAY = 864e5, CHUNK = 30, now = Date.now();
+  const DAY = 864e5, CHUNK = 28, now = Date.now();
   const jobs = [];
   for (let off = 0; off < days; off += CHUNK) {
     jobs.push([ymd(tz, new Date(now - Math.min(off + CHUNK - 1, days - 1) * DAY)), ymd(tz, new Date(now - off * DAY))]);
   }
+  // Ask up to one day past the end (in case Affiliatly treats the end date as exclusive); fall back to the exact end date.
+  const grab = async ([f, t]) => { try { return await fetchRange(a, env, f, addIso(t, 1), debug); } catch { return fetchRange(a, env, f, t, debug); } };
   const out = new Array(jobs.length);
   let next = 0;
-  const work = async () => {                                     // a few at a time: firing 14 at once can get throttled
+  const work = async () => {                                     // a few at a time, so Affiliatly doesn't throttle us
     while (next < jobs.length) {
       const i = next++;
-      try { out[i] = { ok: true, v: await fetchRange(a, env, jobs[i][0], jobs[i][1], debug) }; }
+      try { out[i] = { ok: true, v: await grab(jobs[i]) }; }
       catch (e) { out[i] = { ok: false, e }; }
     }
   };
   await Promise.all(Array.from({ length: Math.min(3, jobs.length) }, work));
   if (!out[0].ok) throw out[0].e;                                // the newest chunk must work; older ones are best-effort
-  const byDate = new Map();
-  for (const r of out) if (r && r.ok) for (const row of r.v) byDate.set(row.date, row);
-  return [...byDate.values()];
+  return toDays(out.flatMap(r => (r && r.ok ? r.v : [])));
 }
 
 async function fetchRange(a, env, from, to, debug = false) {
@@ -362,7 +395,8 @@ async function fetchRange(a, env, from, to, debug = false) {
   let j;
   try { j = JSON.parse(text); }
   catch { throw new HttpError(502, 'Affiliatly did not return JSON' + (debug ? `: ${JSON.stringify(text.slice(0, 160))}` : '. Check AFF_URL, the ID and the hash.')); }
-  return rowsOf(j).map(normRow);
+  if (j && j.success === false) throw new HttpError(502, 'Affiliatly reported an error' + (debug ? `: ${JSON.stringify(text.slice(0, 160))}` : '. Check the ID and hash.'));
+  return rowsOf(j);                                              // raw rows; grouped into days by toDays()
 }
 
 /* ----------------------------------------------------------------- Pushover */
@@ -393,9 +427,9 @@ async function checkAccount(env, u) {
   const cur = {};                                 // per-day snapshot, so a sliding window can't hide a new sale
   for (const r of rows) cur[r.date] = { o: +r.orders || 0, e: +r.sum_earnings_clean || 0 };
   const prev = await env.LEDGER.get('state:' + u, 'json');
-  const save = () => env.LEDGER.put('state:' + u, JSON.stringify({ days: cur, ts: Date.now() }));
+  const save = () => env.LEDGER.put('state:' + u, JSON.stringify({ v: 2, days: cur, ts: Date.now() }));
 
-  if (!prev || !prev.days) return save();         // first run: remember, don't spam history
+  if (!prev || prev.v !== 2 || !prev.days) return save();         // first run: remember, don't spam history
   let n = 0, gain = 0, changed = false;
   for (const d of Object.keys(cur)) {
     const p = prev.days[d] || { o: 0, e: 0 };
