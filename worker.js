@@ -256,14 +256,16 @@ async function adminAuth(req, env) {
  * numbers under those names, even if Affiliatly sends strings ("$12,50") or other key names.
  */
 
-function affUrl(a, env) {
+function affUrl(a, env, from = '', to = '') {
   if (!env.AFF_URL) throw new HttpError(500, 'AFF_URL is not set on the worker (see SETUP.md)');
   if (!a.aff_id || !a.aff_hash) throw new HttpError(409, 'Affiliatly is not linked to this account yet');
   const base = (a.aff_base || env.AFF_BASE || '').replace(/\/+$/, '');
   return env.AFF_URL
     .replaceAll('{base}', base)
     .replaceAll('{id}', encodeURIComponent(a.aff_id))
-    .replaceAll('{hash}', encodeURIComponent(a.aff_hash));
+    .replaceAll('{hash}', encodeURIComponent(a.aff_hash))
+    .replaceAll('{from}', from)
+    .replaceAll('{to}', to);
 }
 
 function rowsOf(j, depth = 0) {
@@ -307,8 +309,29 @@ function normRow(r) {
   };
 }
 
-async function affiliatlyDays(a, env, debug = false) {
-  const url = affUrl(a, env);
+const ymd = (tz, d) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+};
+
+/** Fetches `days` days of history. With {from}/{to} in AFF_URL it asks in 30-day chunks (in case Affiliatly caps the range) and merges them. */
+async function affiliatlyDays(a, env, debug = false, days = 365) {
+  if (!env.AFF_URL || !env.AFF_URL.includes('{from}')) return fetchRange(a, env, '', '', debug);
+  const tz = a.tz || env.TZ || 'UTC';
+  const DAY = 864e5, CHUNK = 30, now = Date.now();
+  const jobs = [];
+  for (let off = 0; off < days; off += CHUNK) {
+    jobs.push([ymd(tz, new Date(now - Math.min(off + CHUNK - 1, days - 1) * DAY)), ymd(tz, new Date(now - off * DAY))]);
+  }
+  const res = await Promise.allSettled(jobs.map(([f, t]) => fetchRange(a, env, f, t, debug)));
+  if (res[0].status === 'rejected') throw res[0].reason;        // the newest chunk must work; older ones are best-effort
+  const byDate = new Map();
+  for (const r of res) if (r.status === 'fulfilled') for (const row of r.value) byDate.set(row.date, row);
+  return [...byDate.values()];
+}
+
+async function fetchRange(a, env, from, to, debug = false) {
+  const url = affUrl(a, env, from, to);
   let r;
   try { r = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10000) }); }
   catch { throw new HttpError(502, 'Could not reach Affiliatly'); }
@@ -344,15 +367,21 @@ async function checkAccount(env, u) {
   const a = await getAcct(env, u);
   if (!a || a.notify === false || !a.pushover_user || !a.aff_id || !a.aff_hash) return;
 
-  const rows = await affiliatlyDays(a, env);
-  const tot = rows.reduce((s, r) => ({ orders: s.orders + (+r.orders || 0), earn: s.earn + (+r.sum_earnings_clean || 0) }), { orders: 0, earn: 0 });
+  const rows = await affiliatlyDays(a, env, false, 62);
+  const cur = {};                                 // per-day snapshot, so a sliding window can't hide a new sale
+  for (const r of rows) cur[r.date] = { o: +r.orders || 0, e: +r.sum_earnings_clean || 0 };
   const prev = await env.LEDGER.get('state:' + u, 'json');
-  const save = () => env.LEDGER.put('state:' + u, JSON.stringify({ ...tot, ts: Date.now() }));
+  const save = () => env.LEDGER.put('state:' + u, JSON.stringify({ days: cur, ts: Date.now() }));
 
-  if (!prev) return save();                       // first run: remember, don't spam history
-  if (tot.orders > prev.orders) {
-    const n = tot.orders - prev.orders;
-    const gain = Math.max(0, tot.earn - prev.earn);
+  if (!prev || !prev.days) return save();         // first run: remember, don't spam history
+  let n = 0, gain = 0, changed = false;
+  for (const d of Object.keys(cur)) {
+    const p = prev.days[d] || { o: 0, e: 0 };
+    if (cur[d].o > p.o) n += cur[d].o - p.o;
+    if (cur[d].e > p.e) gain += cur[d].e - p.e;
+    if (cur[d].o !== p.o || Math.abs(cur[d].e - p.e) > 0.004) changed = true;
+  }
+  if (n > 0) {
     const today = ddmmyyyy(a.tz || env.TZ || 'UTC');
     const sum = f => rows.filter(f).reduce((s, r) => s + (+r.sum_earnings_clean || 0), 0);
     await pushover(a, env, {
@@ -362,7 +391,7 @@ async function checkAccount(env, u) {
     });
     return save();                                // only after a successful push, so failures retry
   }
-  if (tot.orders !== prev.orders || Math.abs(tot.earn - prev.earn) > 0.004) return save();  // refunds / edits
+  if (changed) return save();                     // refunds / edits
 }
 
 /* ------------------------------------------------------------------- routes */
