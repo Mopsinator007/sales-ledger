@@ -298,10 +298,23 @@ const pick = (r, names, re) => {
   return hit ? r[hit] : 0;
 };
 
+// Accepts 18.11.2026, 18.11.26, 18/11/2026, 2026-11-18 ... → { date: 'dd.mm.yyyy', iso: 'yyyy-mm-dd' }
+function normDate(v) {
+  const s = String(v ?? '').trim();
+  const p2 = x => String(x).padStart(2, '0');
+  let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4}|\d{2})\b/);
+  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return { date: `${p2(m[1])}.${p2(m[2])}.${y}`, iso: `${y}-${p2(m[2])}-${p2(m[1])}` }; }
+  m = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (m) return { date: `${p2(m[3])}.${p2(m[2])}.${m[1]}`, iso: `${m[1]}-${p2(m[2])}-${p2(m[3])}` };
+  return { date: s, iso: '' };
+}
+
 function normRow(r) {
+  const d = normDate(r.date);
   return {
     ...r,
-    date: r.date,
+    date: d.date,
+    iso: d.iso,
     orders: num(r.orders),
     visits: num(r.visits),
     sum_price_clean: num(pick(r, ['sum_price_clean', 'sum_price', 'sales', 'revenue'], /price|sale|revenue/i)),
@@ -323,10 +336,19 @@ async function affiliatlyDays(a, env, debug = false, days = 365) {
   for (let off = 0; off < days; off += CHUNK) {
     jobs.push([ymd(tz, new Date(now - Math.min(off + CHUNK - 1, days - 1) * DAY)), ymd(tz, new Date(now - off * DAY))]);
   }
-  const res = await Promise.allSettled(jobs.map(([f, t]) => fetchRange(a, env, f, t, debug)));
-  if (res[0].status === 'rejected') throw res[0].reason;        // the newest chunk must work; older ones are best-effort
+  const out = new Array(jobs.length);
+  let next = 0;
+  const work = async () => {                                     // a few at a time: firing 14 at once can get throttled
+    while (next < jobs.length) {
+      const i = next++;
+      try { out[i] = { ok: true, v: await fetchRange(a, env, jobs[i][0], jobs[i][1], debug) }; }
+      catch (e) { out[i] = { ok: false, e }; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, jobs.length) }, work));
+  if (!out[0].ok) throw out[0].e;                                // the newest chunk must work; older ones are best-effort
   const byDate = new Map();
-  for (const r of res) if (r.status === 'fulfilled') for (const row of r.value) byDate.set(row.date, row);
+  for (const r of out) if (r && r.ok) for (const row of r.v) byDate.set(row.date, row);
   return [...byDate.values()];
 }
 
@@ -423,7 +445,13 @@ async function admin(req, env, path, m) {
           return json({ ok: true });
         }
         const rows = await affiliatlyDays(a, env, true);
-        return json({ ok: true, days: rows.length, sample: rows[0] || null });
+        const isos = rows.map(r => r.iso).filter(Boolean).sort();
+        return json({
+          ok: true, days: rows.length,
+          oldest: isos[0] || null, newest: isos[isos.length - 1] || null,
+          total_commission: rows.reduce((s, r) => s + (+r.sum_earnings_clean || 0), 0),
+          sample: rows[0] || null,
+        });
       } catch (e) {
         if (e instanceof HttpError) return json({ ok: false, error: e.message });
         throw e;
