@@ -453,7 +453,8 @@ async function route(req, env) {
   if (path === '/api/stats' && m === 'GET') {
     const s = await getSession(req, env);
     if (!s) throw new HttpError(401, 'Not signed in');
-    return json(await affiliatlyDays(s.acct, env));
+    const days = Math.min(Math.max(parseInt(url.searchParams.get('days'), 10) || 30, 1), 400);
+    return json(await affiliatlyDays(s.acct, env, false, days));
   }
   if (path.startsWith('/api/admin/')) return admin(req, env, path, m);
 
