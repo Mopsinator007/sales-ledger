@@ -1,16 +1,37 @@
-name = "sales-ledger"
-main = "src/worker.js"
+# Merge these blocks into your existing wrangler.toml (keep your current name / routes / assets).
+name = "ledger"
+main = "worker.js"
 compatibility_date = "2025-01-01"
 
-[assets]
-directory = "./public"
-binding = "ASSETS"
-run_worker_first = ["/api/*", "/test"]
+# The worker imports the three HTML pages as text.
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
 
-[triggers]
-crons = ["* * * * *"]
-
+# Accounts, sessions and notification state.
+#   npx wrangler kv namespace create LEDGER   -> paste the id it prints here
 [[kv_namespaces]]
-binding = "STATE"
+binding = "LEDGER"
 id = "0751072594914e6caf4ffaeb44aaa667"
 
+# Checks every account for new sales and sends that person's Pushover.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Keep this block only if you already serve manifest.json / sw.js / icons from a folder.
+# [assets]
+# directory = "./public"
+# binding = "ASSETS"
+
+[vars]
+TZ = "Europe/Berlin"
+DASH_URL = "https://ledger.itsmadebymo.com"
+AFF_BASE = "https://s2.affiliatly.com/af-1065200"
+# Affiliatly report link with placeholders. Must be the same link your current worker calls,
+# with the affiliate ID and hash swapped for {id} and {hash} (see SETUP.md step 3).
+AFF_URL = ""
+# Optional: one Pushover app token shared by all accounts (accounts can still override it).
+# PUSHOVER_TOKEN = ""
+
+# Secret (not in this file):  npx wrangler secret put DASH_KEY
