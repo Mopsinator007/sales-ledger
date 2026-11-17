@@ -77,11 +77,10 @@ body.private .cmp,body.private #gtxt,body.private .gsub,body.private .bar,body.p
 svg#svg{width:100%;height:170px;display:block;margin-top:14px}
 .axis{display:flex;justify-content:space-between;font:400 12px var(--mono);color:var(--muted);margin-top:8px}
 
-#keybox{display:none;margin:48px 0;gap:10px;flex-wrap:wrap}
-#keybox input{flex:1;min-width:200px;background:transparent;border:1px solid var(--line2);color:var(--ink);padding:14px;font:400 17px var(--disp);border-radius:0}
-#keybox input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px var(--glow)}
-#keybox button{font:600 15px var(--disp);background:var(--fill);color:#fff;border:0;padding:14px 28px;cursor:pointer;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
-#keybox button:hover{background:var(--ink);color:var(--bg)}
+[hidden]{display:none!important}
+.hero{overflow-x:clip} /* the decorative glow (.spot) pokes 10% past the right edge and widened the page on phones */
+#emsg{margin:56px 0;color:var(--muted);font-size:16px;max-width:60ch}
+#emsg b{display:block;color:var(--ink);font-weight:700;margin-bottom:6px}
 
 @keyframes ping{70%{box-shadow:0 0 0 9px rgba(255,61,61,0)}0%{box-shadow:0 0 0 0 rgba(255,61,61,.6)}}
 @media(max-width:860px){.hero .wrap{grid-template-columns:1fr}.vf{margin:0 auto;width:min(88%,380px)}}
@@ -123,6 +122,9 @@ svg#svg.anim rect{transform-box:fill-box;transform-origin:bottom;animation:grow 
 .afl:hover{background:var(--fill);color:#fff}
 .afbtn{display:none;align-items:center;justify-content:center;margin-top:12px;padding:15px 22px;background:var(--fill);color:#fff;text-decoration:none;font:600 15px var(--disp);clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);transition:background .25s,color .25s}
 .afbtn:hover,.afbtn:active{background:var(--ink);color:var(--bg)}
+.afbtn.alt{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2);clip-path:none}
+.afbtn.alt:hover,.afbtn.alt:active{box-shadow:inset 0 0 0 1px var(--red);background:transparent;color:var(--ink)}
+.tr .eye+.eye{margin-left:-6px}
 /* phone */
 main{padding-bottom:env(safe-area-inset-bottom)}
 @media(hover:none){.stats div:hover{transform:none;box-shadow:none}.btns button:hover{transform:none}}
@@ -131,13 +133,14 @@ main{padding-bottom:env(safe-area-inset-bottom)}
  .wrap{width:calc(100% - 32px)}
  section::before{left:10px}section::after{right:10px}
  nav .wrap{height:58px}
- .logo{font-size:19px;gap:10px}
+ .logo{font-size:19px;gap:10px;white-space:nowrap}
  .afl{display:none}
  .afbtn{display:flex}
  .eye{width:38px;height:38px;margin-right:12px}
- #stxt{display:none}#dot.err+#stxt{display:inline;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ #stxt{display:none}#dot.err+#stxt{display:inline;max-width:16vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .hero{padding:26px 0 36px}
  .hero .wrap{gap:26px}
+ .hero .wrap>div{min-width:0} /* the scrolling period buttons were stretching this column past the screen */
  .eyebrow{margin-bottom:12px}
  .sub{font-size:15px}
  .btns{flex-wrap:nowrap;overflow-x:auto;margin:22px -16px 0;padding:0 16px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -152,17 +155,16 @@ main{padding-bottom:env(safe-area-inset-bottom)}
  .stats b{font-size:26px}
  svg#svg{height:140px}
  .axis{font-size:11px}
- #keybox{margin:32px 0}
- #keybox input,#keybox button{width:100%}
+ #emsg{margin:32px 0}
 }
 </style>
 </head>
 <body>
 <div class="bg bg-grid" aria-hidden="true"></div>
-<nav><div class="wrap"><span class="logo"><i class="dm"></i>Sales Ledger</span><span class="tr"><a class="afl" href="https://s2.affiliatly.com/af-1065200/affiliate.panel" target="_blank" rel="noopener">Affiliatly ↗</a><button class="eye" id="eye" type="button" aria-pressed="false" aria-label="Hide amounts"></button><span id="dot"></span><span id="stxt">Loading…</span></span></div></nav>
+<nav><div class="wrap"><span class="logo"><i class="dm"></i>Sales Ledger</span><span class="tr"><a class="afl" id="afl" href="#" target="_blank" rel="noopener" hidden>Affiliatly ↗</a><a class="afl" id="adm" href="/admin" hidden>Admin</a><button class="eye" id="eye" type="button" aria-pressed="false" aria-label="Hide amounts"></button><button class="eye" id="out" type="button" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24"><path d="M9 4H5v16h4"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9"/></svg></button><span id="dot"></span><span id="stxt">Loading…</span></span></div></nav>
 <main>
-<div class="wrap"><form id="keybox"><input id="keyin" type="password" placeholder="Enter your dashboard key" autocomplete="current-password"><button>Unlock</button></form></div>
-<div id="app">
+<div class="wrap"><p id="emsg" hidden></p></div>
+<div id="app" hidden>
 <header class="hero">
 <div class="spot"></div>
 <div class="wrap">
@@ -170,9 +172,10 @@ main{padding-bottom:env(safe-area-inset-bottom)}
 <p class="eyebrow" id="cap">Commission earned</p>
 <div id="hero">$0.00</div>
 <div class="cmp" id="cmp"></div>
-<p class="sub">Your affiliate commission, tracked live from every referred sale.</p>
+<p class="sub" id="sub">Your affiliate commission, tracked live from every referred sale.</p>
 <div class="btns" id="tabs" role="group" aria-label="Time period"></div>
-<a class="afbtn" href="https://s2.affiliatly.com/af-1065200/affiliate.panel" target="_blank" rel="noopener">Open Affiliatly panel ↗</a>
+<a class="afbtn" id="afbtn" href="#" target="_blank" rel="noopener" hidden>Open Affiliatly panel ↗</a>
+<a class="afbtn alt" id="admbtn" href="/admin" hidden>Manage accounts</a>
 </div>
 <div class="vf"><div class="vf-frame">
 <div class="fillbg" id="fillbg"></div>
@@ -195,8 +198,9 @@ main{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 </main>
 <script>
-const $=s=>document.querySelector(s),P=[1,7,30,'M',90,365],GOAL=1000;
+const $=s=>document.querySelector(s),P=[1,7,30,'M',90,365];let GOAL=1000;
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+try{localStorage.removeItem('key')}catch(e){} // the old shared dashboard key is no longer used; don't leave it on the device
 const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',EYEOFF=EYE.replace('</svg>','<path d="M3 3l18 18"/></svg>');
 function setPriv(p){document.body.classList.toggle('private',p);const e=$('#eye');e.innerHTML=p?EYEOFF:EYE;e.setAttribute('aria-pressed',p);e.setAttribute('aria-label',p?'Show amounts':'Hide amounts');store.set('priv',p?'1':'0')}
 $('#eye').onclick=()=>setPriv(!document.body.classList.contains('private'));
@@ -239,18 +243,35 @@ function render(){
   c.map((d,i)=>{const h=Math.max(d.earn/max*156,d.earn>0?3:1.5);return `<rect x="${i*w+w*.15}" y="${170-h}" width="${w*.7}" height="${h}" fill="url(#g)" style="animation-delay:${Math.min(i*14,500)}ms" opacity="${d.earn>0?1:.3}"><title>${d.t}: ${usd(d.earn)}</title></rect>`}).join('');
  $('#ccap').textContent=period==='M'&&N>=7?'Commission per day, this month':`Commission per day, last ${n} days`;fitAll();$('#a1').textContent=c[0].t;$('#a2').textContent=c[c.length-1].t;
 }
+const toLogin=()=>location.replace('/login');
+let me=null;
+async function loadMe(){
+ const r=await fetch('/api/me',{cache:'no-store'});
+ if(r.status===401){toLogin();return false}
+ if(!r.ok)throw new Error('Error '+r.status);
+ me=await r.json();GOAL=me.goal||1000;
+ document.title=me.name+' · Sales Ledger';
+ $('#sub').textContent=me.name+'’s affiliate commission, tracked live from every referred sale.';
+ if(me.panel)['#afl','#afbtn'].forEach(s=>{$(s).href=me.panel;$(s).hidden=false});
+ if(me.admin)['#adm','#admbtn'].forEach(s=>$(s).hidden=false);
+ return true;
+}
 async function load(){
  try{
-  const r=await fetch('/api/stats',{headers:{'x-key':store.get('key')||''},cache:'no-store'});
-  if(r.status===401){$('#keybox').style.display='flex';$('#app').style.display='none';setStatus('Locked',true);return}
+  if(!me&&!(await loadMe()))return;
+  const r=await fetch('/api/stats',{cache:'no-store'});
+  if(r.status===401){toLogin();return}
   if(!r.ok){let m='Error '+r.status;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}
   const j=await r.json();
   days=Object.values(j).map(d=>{const [dd,mm,yy]=d.date.split('.');return{t:`${yy}-${mm}-${dd}`,orders:+d.orders,visits:+d.visits,sales:+d.sum_price_clean,earn:+d.sum_earnings_clean}}).sort((a,b)=>a.t<b.t?1:-1);
-  $('#keybox').style.display='none';$('#app').style.display='';render();
+  $('#emsg').hidden=true;$('#app').hidden=false;render();
   setStatus('Live, updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
- }catch(e){setStatus('Could not load stats: '+e.message,true)}
+ }catch(e){
+  setStatus('Could not load stats: '+e.message,true);
+  if($('#app').hidden){const m=$('#emsg');m.innerHTML='<b>Couldn’t load your ledger</b>';m.append(e.message);m.hidden=false}
+ }
 }
-$('#keybox').onsubmit=e=>{e.preventDefault();store.set('key',$('#keyin').value);load()};
+$('#out').onclick=async()=>{try{await fetch('/api/logout',{method:'POST'})}catch(e){}toLogin()};
 load();setInterval(load,30000);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 
