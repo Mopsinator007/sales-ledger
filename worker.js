@@ -235,9 +235,13 @@ async function me(req, env) {
   return json({ username: a.username, name: a.name, admin: !!a.admin, goal: a.goal || 1000, panel: base ? base + '/affiliate.panel' : '' }, 200, extra);
 }
 
+// tolerate a stray space/newline or wrapping quotes in the stored secret (easy to paste in by accident)
+const cleanSecret = s => String(s ?? '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+
 async function adminAuth(req, env) {
-  const key = req.headers.get('x-admin-key');
-  if (key && env.DASH_KEY && safeEq(key, env.DASH_KEY)) return true;   // no lockout on the admin key
+  const key = (req.headers.get('x-admin-key') || '').trim();
+  const secret = cleanSecret(env.DASH_KEY);
+  if (key && secret && safeEq(key, secret)) return true;               // no lockout on the admin key
   const s = await getSession(req, env);
   return !!(s && s.acct.admin);
 }
@@ -330,7 +334,12 @@ async function checkAccount(env, u) {
 /* ------------------------------------------------------------------- routes */
 
 async function admin(req, env, path, m) {
-  if (!(await adminAuth(req, env))) throw new HttpError(401, 'Admin access required');
+  if (!(await adminAuth(req, env))) {
+    const sent = req.headers.get('x-admin-key');
+    throw new HttpError(401, !sent ? 'Admin access required'
+      : !cleanSecret(env.DASH_KEY) ? 'This worker has no DASH_KEY secret. Add a secret named exactly DASH_KEY, then redeploy.'
+      : 'That key didn’t match DASH_KEY.');
+  }
   const parts = path.split('/').slice(3);         // ['accounts', 'emery', 'test-pushover']
   if (parts[0] === 'accounts') {
     if (parts.length === 1 && m === 'GET') {
