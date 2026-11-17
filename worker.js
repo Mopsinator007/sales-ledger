@@ -237,12 +237,7 @@ async function me(req, env) {
 
 async function adminAuth(req, env) {
   const key = req.headers.get('x-admin-key');
-  if (key) {
-    const id = 'adm:' + clientIp(req);
-    if ((await strikes(env, id)) >= 10) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
-    if (env.DASH_KEY && safeEq(key, env.DASH_KEY)) return true;
-    await strike(env, id);
-  }
+  if (key && env.DASH_KEY && safeEq(key, env.DASH_KEY)) return true;   // no lockout on the admin key
   const s = await getSession(req, env);
   return !!(s && s.acct.admin);
 }
