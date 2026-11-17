@@ -1,139 +1,405 @@
-// One Worker: serves the dashboard (public/), the stats API, and the cron that sends Pushover alerts.
-// All settings are read from the KV key "config" (JSON), so nothing is set in Worker variables.
-const usd = n => '$' + n.toFixed(2);
-const fmtDate = (c, ms) => new Intl.DateTimeFormat('en-CA', { timeZone: c.TZ || 'Europe/Berlin' }).format(new Date(ms)); // YYYY-MM-DD
+/**
+ * Sales Ledger: multi-account worker
+ *
+ *  - Accounts, sessions and notification state live in one KV namespace (binding: LEDGER)
+ *      acct:<username>   account record (password hash, Affiliatly + Pushover details)
+ *      sess:<sha256>     login session (30 days, hashed so a KV leak can't be replayed)
+ *      state:<username>  last seen totals, used to detect new sales for Pushover
+ *      rl:<ip>:<user>    failed-login counter
+ *  - /login      sign-in page
+ *  - /           the ledger (needs a session)
+ *  - /admin      create / edit accounts (needs an admin session OR the DASH_KEY secret)
+ *  - cron        every couple of minutes: check each account, push to that person's Pushover
+ *
+ * Env vars / secrets:
+ *   DASH_KEY       secret   master key for /admin (use it once to create the first admin)
+ *   AFF_URL        var      Affiliatly report URL template with {base} {id} {hash} placeholders
+ *   AFF_BASE       var      default Affiliatly program base (accounts can override)
+ *   PUSHOVER_TOKEN var      optional default Pushover app token (accounts can override)
+ *   TZ, DASH_URL   var      default timezone / link used in push notifications
+ */
+import INDEX_HTML from './index.html';
+import LOGIN_HTML from './login.html';
+import ADMIN_HTML from './admin.html';
 
-async function getConfig(env) {
-  return (await env.STATE.get('config', 'json')) || {};
+const COOKIE = 'ledger_session';
+const SESSION_TTL = 60 * 60 * 24 * 30;            // seconds
+const REFRESH_AFTER = 7 * 24 * 60 * 60 * 1000;    // ms: re-extend sessions older than this
+const PBKDF2_ITER = 100000;                       // Workers caps PBKDF2 at 100k
+const enc = new TextEncoder();
+
+/* ------------------------------------------------------------------ helpers */
+
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
 }
 
-// Builds fresh date ranges on every run (always ending today), fetched in 60-day pieces.
-async function fetchStats(c, daysBack, chunk = 60) {
-  for (const k of ['AFF_BASE', 'AFF_ID', 'AFF_HASH']) if (!c[k]) throw new Error(`"${k}" is missing in the KV config`);
-  const now = Date.now(), parts = [];
-  for (let end = 0; end <= daysBack; end += chunk) {
-    const to = now - end * 864e5, from = now - Math.min(end + chunk - 1, daysBack) * 864e5;
-    const url = `${c.AFF_BASE}/affiliate/api/check_stats_by_date/${fmtDate(c, from)}/${fmtDate(c, to)}/${c.AFF_ID}?hash=${c.AFF_HASH}`;
-    parts.push(fetch(url).then(async r => {
-      const t = await r.text();
-      try { const j = JSON.parse(t); if (j && typeof j === 'object') return j; } catch (e) {}
-      throw new Error(`Affiliatly replied ${r.status}: ${t.slice(0, 120)}`);
-    }));
-  }
-  const res = await Promise.allSettled(parts); // a failing chunk is skipped
-  const ok = res.filter(x => x.status === 'fulfilled').map(x => x.value);
-  if (!ok.length) throw res[0].reason;
-  return Object.assign({}, ...ok);
+const SEC = {
+  'cache-control': 'no-store',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'same-origin',
+};
+const json = (data, status = 200, extra = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...SEC, ...extra } });
+const page = body => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8', ...SEC } });
+const redirect = to => new Response(null, { status: 302, headers: { location: to, ...SEC } });
+const fail = e => {
+  if (e instanceof HttpError) return json({ error: e.message }, e.status);
+  console.error(e);
+  return json({ error: 'Server error' }, 500);
+};
+
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64url = buf => b64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+const sha256hex = async s => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
+const usd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function safeEq(a, b) {                           // constant-time string compare
+  a = String(a); b = String(b);
+  let r = a.length ^ b.length;
+  for (let i = 0, n = Math.max(a.length, b.length); i < n; i++) r |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return r === 0;
 }
 
-async function push(c, title, message) {
-  const body = { token: c.PUSHOVER_TOKEN, user: c.PUSHOVER_USER, title, message, html: '1', sound: 'cashregister' };
-  if (c.DASH_URL) { body.url = c.DASH_URL; body.url_title = 'Open dashboard'; }
-  await fetch('https://api.pushover.net/1/messages.json', { method: 'POST', body: new URLSearchParams(body) });
+/* ---------------------------------------------------------------- passwords */
+
+async function pbkdf2(password, salt, iterations = PBKDF2_ITER) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256));
+}
+async function makePw(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { salt: b64(salt), hash: b64(await pbkdf2(password, salt)), iter: PBKDF2_ITER };
+}
+const checkPw = async (password, pw) => safeEq(b64(await pbkdf2(password, unb64(pw.salt), pw.iter)), pw.hash);
+const DUMMY_SALT = new Uint8Array(16);            // burn the same time when the username doesn't exist
+
+/* ----------------------------------------------------------------- accounts */
+
+const validUser = u => /^[a-z0-9][a-z0-9_-]{1,23}$/.test(u);
+const getAcct = (env, u) => env.LEDGER.get('acct:' + u, 'json');
+const mask = s => (s ? '••••' + String(s).slice(-4) : '');
+
+const publicAcct = a => ({
+  username: a.username,
+  name: a.name,
+  admin: !!a.admin,
+  goal: a.goal || 1000,
+  tz: a.tz || '',
+  notify: a.notify !== false,
+  aff_base: a.aff_base || '',
+  aff_id: a.aff_id || '',
+  aff_hash: mask(a.aff_hash),
+  has_aff_hash: !!a.aff_hash,
+  pushover_user: mask(a.pushover_user),
+  has_pushover_user: !!a.pushover_user,
+  pushover_token: mask(a.pushover_token),
+  has_pushover_token: !!a.pushover_token,
+  created: a.created,
+  updated: a.updated,
+});
+
+async function listAccounts(env) {
+  const { keys } = await env.LEDGER.list({ prefix: 'acct:' });
+  const all = (await Promise.all(keys.map(k => env.LEDGER.get(k.name, 'json')))).filter(Boolean);
+  return all.sort((a, b) => (a.created || 0) - (b.created || 0));
 }
 
-const dmy = iso => iso.split('-').reverse().join('.');      // 2026-10-22 -> 22.10.2026
-const ymOf = k => { const [, m, y] = k.split('.'); return `${y}-${m}`; }; // 22.10.2026 -> 2026-10
+async function putAccount(req, env, u) {
+  if (!validUser(u)) throw new HttpError(400, 'Username must be 2–24 characters: a–z, 0–9, _ or -');
+  let b;
+  try { b = await req.json(); } catch { throw new HttpError(400, 'Bad request'); }
+  const old = await getAcct(env, u);
+  const now = Date.now();
+  const a = old ? { ...old } : { username: u, created: now, pwv: 1 };
 
-// Milestones, records, traffic spikes and the daily recap. Each fires once per day/month (tracked in flags).
-async function milestones(c, L, silent) {
-  const H = L.hist, F = L.flags, now = Date.now();
-  const iso = fmtDate(c, now), today = dmy(iso), month = iso.slice(0, 7);
-  const t = H[today] || { o: 0, s: 0, e: 0, v: 0 };
-  const send = async (title, msg) => { if (!silent) await push(c, title, msg); };
-  const gold = x => `<font color="#d4a017">${x}</font>`;
+  const str = (v, max) => String(v ?? '').trim().slice(0, max);
+  if (b.name !== undefined || !old) a.name = str(b.name, 40) || u;
 
-  const months = {}, orders = {};
-  for (const [k, v] of Object.entries(H)) { const m = ymOf(k); months[m] = (months[m] || 0) + v.e; orders[m] = (orders[m] || 0) + v.o; }
-  const mtd = months[month] || 0;
-  const prevBestMonth = Math.max(0, ...Object.entries(months).filter(([m]) => m !== month).map(([, e]) => e));
-  const prevBestDay = Math.max(0, ...Object.entries(H).filter(([k]) => k !== today).map(([, v]) => v.e));
-  const goal = +c.GOAL || 1000;
-  const dom = +iso.slice(8), dim = new Date(+iso.slice(0, 4), +iso.slice(5, 7), 0).getDate();
+  if (b.password) {
+    const pw = String(b.password);
+    if (pw.length < 8) throw new HttpError(400, 'Password must be at least 8 characters');
+    if (pw.length > 200) throw new HttpError(400, 'Password is too long');
+    a.pw = await makePw(pw);
+    a.pwv = (a.pwv || 0) + 1;                     // invalidates this person's existing sessions
+  } else if (!old) {
+    throw new HttpError(400, 'Set a password for the new account');
+  }
 
-  if (mtd >= goal && F.goal !== month) {
-    F.goal = month;
-    await send('🎯 Monthly goal reached!', `<b>You hit ${gold(usd(goal))} commission this month</b>\nMonth so far: ${usd(mtd)} from ${orders[month]} sales`);
+  if (b.admin !== undefined) a.admin = !!b.admin;
+  if (b.notify !== undefined) a.notify = !!b.notify;
+
+  if (b.goal !== undefined && b.goal !== '') {
+    const g = Number(b.goal);
+    if (!(g > 0 && g < 1e9)) throw new HttpError(400, 'Monthly goal must be a positive number');
+    a.goal = g;
   }
-  if (prevBestDay > 0 && t.e > prevBestDay && F.bestDay !== today) {
-    F.bestDay = today;
-    await send(`🏆 New best day: ${usd(t.e)}`, `<b>New record!</b> Your previous best day was ${gold(usd(prevBestDay))}.\n${t.o} sale${t.o > 1 ? 's' : ''} so far today`);
+  if (b.tz !== undefined) {
+    const tz = str(b.tz, 60);
+    if (tz) { try { new Intl.DateTimeFormat('en', { timeZone: tz }); } catch { throw new HttpError(400, 'Unknown timezone, e.g. Europe/Berlin'); } }
+    a.tz = tz;
   }
-  if (prevBestMonth > 0 && mtd > prevBestMonth && F.bestMonth !== month) {
-    F.bestMonth = month;
-    await send(`🏆 New best month: ${usd(mtd)}`, `<b>Record month!</b> You passed your previous best of ${gold(usd(prevBestMonth))}.\n${dim - dom} day${dim - dom === 1 ? '' : 's'} still to go this month`);
+  if (b.aff_base !== undefined) {
+    const base = str(b.aff_base, 200).replace(/\/+$/, '');
+    if (base && !/^https:\/\/[^\s/]+/.test(base)) throw new HttpError(400, 'Affiliatly base must start with https://');
+    a.aff_base = base;
   }
-  // traffic spike: at least 10 visits and 3x the average of the previous 14 days
-  let sum = 0;
-  for (let i = 1; i <= 14; i++) sum += (H[dmy(fmtDate(c, now - i * 864e5))] || {}).v || 0;
-  const avg = sum / 14;
-  if (t.v >= 10 && t.v >= 3 * avg && F.spike !== today) {
-    F.spike = today;
-    await send(`📈 Traffic spike: ${t.v} visits`, `<b>${t.v} visits today</b>, usually about ${avg.toFixed(1)} a day.\nSales so far today: ${t.o}`);
+  if (b.aff_id !== undefined) a.aff_id = str(b.aff_id, 40);
+  // secrets: blank means "keep what's stored"
+  for (const k of ['aff_hash', 'pushover_user', 'pushover_token']) {
+    const v = str(b[k], 200);
+    if (v && !v.startsWith('••••')) a[k] = v;
   }
-  // daily recap
-  const hour = +new Intl.DateTimeFormat('en-GB', { timeZone: c.TZ || 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' }).format(now);
-  if (hour >= (c.RECAP_HOUR !== undefined ? +c.RECAP_HOUR : 20) && F.recap !== today) {
-    F.recap = today;
-    await send(`🌙 Daily recap: ${usd(t.e)}`,
-      `<b>Today</b>  ${gold(usd(t.e))} commission from ${t.o} sale${t.o === 1 ? '' : 's'}\n` +
-      `<b>Visits</b>  ${t.v}\n` +
-      `<b>This month</b>  ${usd(mtd)} of ${usd(goal)} (${Math.round(mtd / goal * 100)}%)${mtd >= goal ? ' 🎯' : ''}`);
-  }
+
+  a.updated = now;
+  await env.LEDGER.put('acct:' + u, JSON.stringify(a));
+  return json({ ok: true, account: publicAcct(a), created: !old });
 }
 
-async function check(env) {
-  const c = await getConfig(env);
-  const raw = await env.STATE.get('ledger');
-  const fresh = !raw; // first run: load the whole year silently, no alerts
-  const L = raw ? JSON.parse(raw) : { hist: {}, flags: {} };
-  let data;
-  try { data = await fetchStats(c, fresh ? 364 : 3); } catch (e) { console.log('fetch failed', String(e)); return; }
+async function deleteAccount(env, u) {
+  if (!validUser(u) || !(await getAcct(env, u))) throw new HttpError(404, 'No such account');
+  await Promise.all([env.LEDGER.delete('acct:' + u), env.LEDGER.delete('state:' + u)]);
+  return json({ ok: true });                      // sessions die with the account (checked on every request)
+}
 
-  for (const d of Object.values(data)) {
-    const cur = { o: +d.orders, s: +d.sum_price_clean, e: +d.sum_earnings_clean, v: +d.visits };
-    const prev = L.hist[d.date] || { o: 0, s: 0, e: 0, v: 0 };
-    L.hist[d.date] = cur;
-    if (!fresh && cur.o > prev.o) {
-      const n = cur.o - prev.o, per = (cur.e - prev.e) / n; // commission per new sale
-      const count = n > 10 ? 1 : n; // never spam more than 10 messages at once
-      const amount = n > 10 ? cur.e - prev.e : per;
-      for (let i = 0; i < count; i++) {
-        let msg = `<b>You earned <font color="#d4a017">${usd(amount)}</font> commission</b>\n` +
-                  `Today: <b>${usd(cur.e)}</b> from ${cur.o} sale${cur.o > 1 ? 's' : ''}`;
-        if (n > 1) msg += `\n<i>${n} sales came in together${n > 10 ? ', combined commission' : ', commission split evenly'}</i>`;
-        await push(c, `💰 New sale: +${usd(amount)}`, msg);
+/* ----------------------------------------------------------------- sessions */
+
+const cookieHeader = (value, maxAge) => `${COOKIE}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`;
+function readCookie(req, name) {
+  const hit = (req.headers.get('cookie') || '').split(/;\s*/).find(c => c.startsWith(name + '='));
+  return hit ? hit.slice(name.length + 1) : null;
+}
+
+async function createSession(env, a) {
+  const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  await env.LEDGER.put('sess:' + (await sha256hex(token)), JSON.stringify({ u: a.username, v: a.pwv || 0, iat: Date.now() }), { expirationTtl: SESSION_TTL });
+  return token;
+}
+
+async function getSession(req, env) {
+  const token = readCookie(req, COOKIE);
+  if (!token) return null;
+  const key = 'sess:' + (await sha256hex(token));
+  const rec = await env.LEDGER.get(key, 'json');
+  if (!rec) return null;
+  const acct = await getAcct(env, rec.u);
+  if (!acct || (acct.pwv || 0) !== rec.v) return null;
+  return { acct, token, key, rec };
+}
+
+// failed-attempt counters (only failures are written, so normal logins cost no KV writes)
+const strikes = async (env, id) => Number(await env.LEDGER.get('rl:' + id)) || 0;
+const strike = async (env, id) => env.LEDGER.put('rl:' + id, String((await strikes(env, id)) + 1), { expirationTtl: 900 });
+const clientIp = req => req.headers.get('cf-connecting-ip') || 'local';
+
+async function login(req, env) {
+  let b;
+  try { b = await req.json(); } catch { throw new HttpError(400, 'Bad request'); }
+  const u = String(b.username || '').trim().toLowerCase();
+  const p = String(b.password || '');
+  if (!u || !p || p.length > 200) throw new HttpError(400, 'Enter your username and password');
+
+  const rlId = `${clientIp(req)}:${u.slice(0, 24)}`;
+  if ((await strikes(env, rlId)) >= 8) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
+
+  const a = validUser(u) ? await getAcct(env, u) : null;
+  const ok = a ? await checkPw(p, a.pw) : (await pbkdf2(p, DUMMY_SALT), false);
+  if (!ok) {
+    await strike(env, rlId);
+    throw new HttpError(401, 'Wrong username or password');
+  }
+
+  const token = await createSession(env, a);
+  return json({ ok: true, name: a.name }, 200, { 'set-cookie': cookieHeader(token, SESSION_TTL) });
+}
+
+async function logout(req, env) {
+  const token = readCookie(req, COOKIE);
+  if (token) await env.LEDGER.delete('sess:' + (await sha256hex(token)));
+  return json({ ok: true }, 200, { 'set-cookie': cookieHeader('', 0) });
+}
+
+async function me(req, env) {
+  const s = await getSession(req, env);
+  if (!s) return json({ error: 'Not signed in' }, 401);
+  const a = s.acct;
+  const extra = {};
+  if (Date.now() - s.rec.iat > REFRESH_AFTER) {   // sliding expiry for people who use it daily
+    await env.LEDGER.put(s.key, JSON.stringify({ ...s.rec, iat: Date.now() }), { expirationTtl: SESSION_TTL });
+    extra['set-cookie'] = cookieHeader(s.token, SESSION_TTL);
+  }
+  const base = (a.aff_base || env.AFF_BASE || '').replace(/\/+$/, '');
+  return json({ username: a.username, name: a.name, admin: !!a.admin, goal: a.goal || 1000, panel: base ? base + '/affiliate.panel' : '' }, 200, extra);
+}
+
+async function adminAuth(req, env) {
+  const key = req.headers.get('x-admin-key');
+  if (key) {
+    const id = 'adm:' + clientIp(req);
+    if ((await strikes(env, id)) >= 10) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
+    if (env.DASH_KEY && safeEq(key, env.DASH_KEY)) return true;
+    await strike(env, id);
+  }
+  const s = await getSession(req, env);
+  return !!(s && s.acct.admin);
+}
+
+/* --------------------------------------------------------------- Affiliatly */
+/*
+ * The one integration point. Each account has its own aff_id + aff_hash (and optionally
+ * aff_base); the URL comes from the AFF_URL template. The response must contain one row per
+ * day: { date: 'dd.mm.yyyy', orders, visits, sum_price_clean, sum_earnings_clean }.
+ */
+
+function affUrl(a, env) {
+  if (!env.AFF_URL) throw new HttpError(500, 'AFF_URL is not set on the worker (see SETUP.md)');
+  if (!a.aff_id || !a.aff_hash) throw new HttpError(409, 'Affiliatly is not linked to this account yet');
+  const base = (a.aff_base || env.AFF_BASE || '').replace(/\/+$/, '');
+  return env.AFF_URL
+    .replaceAll('{base}', base)
+    .replaceAll('{id}', encodeURIComponent(a.aff_id))
+    .replaceAll('{hash}', encodeURIComponent(a.aff_hash));
+}
+
+function rowsOf(j, depth = 0) {
+  const v = Array.isArray(j) ? j : j && typeof j === 'object' ? Object.values(j) : [];
+  const rows = v.filter(r => r && typeof r === 'object' && typeof r.date === 'string');
+  if (rows.length || depth > 1) return rows;
+  for (const x of v) {
+    if (x && typeof x === 'object') { const inner = rowsOf(x, depth + 1); if (inner.length) return inner; }
+  }
+  return [];
+}
+
+async function affiliatlyDays(a, env, debug = false) {
+  const url = affUrl(a, env);
+  let r;
+  try { r = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10000) }); }
+  catch { throw new HttpError(502, 'Could not reach Affiliatly'); }
+  const text = await r.text();
+  if (!r.ok) throw new HttpError(502, `Affiliatly answered HTTP ${r.status}. Check the ID and hash.`);
+  let j;
+  try { j = JSON.parse(text); }
+  catch { throw new HttpError(502, 'Affiliatly did not return JSON' + (debug ? `: ${JSON.stringify(text.slice(0, 160))}` : '. Check AFF_URL, the ID and the hash.')); }
+  return rowsOf(j);
+}
+
+/* ----------------------------------------------------------------- Pushover */
+
+async function pushover(a, env, { title, message, url }) {
+  const token = a.pushover_token || env.PUSHOVER_TOKEN;
+  if (!a.pushover_user || !token) throw new HttpError(409, 'Pushover is not set up for this account');
+  const body = new URLSearchParams({ token, user: a.pushover_user, title, message });
+  if (url) { body.set('url', url); body.set('url_title', 'Open ledger'); }
+  let r;
+  try { r = await fetch(env.PUSHOVER_URL || 'https://api.pushover.net/1/messages.json', { method: 'POST', body, signal: AbortSignal.timeout(10000) }); }
+  catch { throw new HttpError(502, 'Could not reach Pushover'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.status !== 1) throw new HttpError(502, 'Pushover said: ' + ((j.errors || []).join(', ') || 'HTTP ' + r.status));
+}
+
+function ddmmyyyy(tz, d = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.day}.${p.month}.${p.year}`;
+}
+
+/** Cron: compare each account's totals with what we saw last time; push when orders went up. */
+async function checkAccount(env, u) {
+  const a = await getAcct(env, u);
+  if (!a || a.notify === false || !a.pushover_user || !a.aff_id || !a.aff_hash) return;
+
+  const rows = await affiliatlyDays(a, env);
+  const tot = rows.reduce((s, r) => ({ orders: s.orders + (+r.orders || 0), earn: s.earn + (+r.sum_earnings_clean || 0) }), { orders: 0, earn: 0 });
+  const prev = await env.LEDGER.get('state:' + u, 'json');
+  const save = () => env.LEDGER.put('state:' + u, JSON.stringify({ ...tot, ts: Date.now() }));
+
+  if (!prev) return save();                       // first run: remember, don't spam history
+  if (tot.orders > prev.orders) {
+    const n = tot.orders - prev.orders;
+    const gain = Math.max(0, tot.earn - prev.earn);
+    const today = ddmmyyyy(a.tz || env.TZ || 'UTC');
+    const sum = f => rows.filter(f).reduce((s, r) => s + (+r.sum_earnings_clean || 0), 0);
+    await pushover(a, env, {
+      title: n > 1 ? `💰 ${n} new sales` : '💰 New sale',
+      message: `+${usd(gain)} commission\nToday ${usd(sum(r => r.date === today))} · Month ${usd(sum(r => r.date.slice(3) === today.slice(3)))}`,
+      url: env.DASH_URL,
+    });
+    return save();                                // only after a successful push, so failures retry
+  }
+  if (tot.orders !== prev.orders || Math.abs(tot.earn - prev.earn) > 0.004) return save();  // refunds / edits
+}
+
+/* ------------------------------------------------------------------- routes */
+
+async function admin(req, env, path, m) {
+  if (!(await adminAuth(req, env))) throw new HttpError(401, 'Admin access required');
+  const parts = path.split('/').slice(3);         // ['accounts', 'emery', 'test-pushover']
+  if (parts[0] === 'accounts') {
+    if (parts.length === 1 && m === 'GET') {
+      return json({
+        accounts: (await listAccounts(env)).map(publicAcct),
+        defaults: { aff_base: env.AFF_BASE || '', tz: env.TZ || '', has_aff_url: !!env.AFF_URL, has_pushover_token: !!env.PUSHOVER_TOKEN },
+      });
+    }
+    const u = decodeURIComponent(parts[1] || '').toLowerCase();
+    if (parts.length === 2 && m === 'PUT') return putAccount(req, env, u);
+    if (parts.length === 2 && m === 'DELETE') return deleteAccount(env, u);
+    if (parts.length === 3 && m === 'POST' && (parts[2] === 'test-pushover' || parts[2] === 'test-affiliatly')) {
+      const a = validUser(u) && (await getAcct(env, u));
+      if (!a) throw new HttpError(404, 'No such account');
+      try {
+        if (parts[2] === 'test-pushover') {
+          await pushover(a, env, { title: 'Sales Ledger', message: `Hi ${a.name}, notifications are working ✅`, url: env.DASH_URL });
+          return json({ ok: true });
+        }
+        const rows = await affiliatlyDays(a, env, true);
+        return json({ ok: true, days: rows.length, sample: rows[0] || null });
+      } catch (e) {
+        if (e instanceof HttpError) return json({ ok: false, error: e.message });
+        throw e;
       }
     }
   }
-  const cut = fmtDate(c, Date.now() - 400 * 864e5);
-  for (const k of Object.keys(L.hist)) if (dmy(k.split('.').reverse().join('-')) && k.split('.').reverse().join('-') < cut) delete L.hist[k];
-
-  await milestones(c, L, fresh);
-  const out = JSON.stringify(L);
-  if (out !== raw) await env.STATE.put('ledger', out); // only write when something changed (KV free tier: 1000 writes/day)
+  throw new HttpError(404, 'Not found');
 }
 
-const json = (body, status = 200) =>
-  new Response(body, { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+async function route(req, env) {
+  const url = new URL(req.url);
+  const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : '/';
+  const m = req.method;
+
+  if (m !== 'GET' && m !== 'HEAD') {              // same-origin only for anything that changes state
+    const origin = req.headers.get('origin');
+    if (origin && new URL(origin).host !== url.host) throw new HttpError(403, 'Bad origin');
+  }
+
+  if (path === '/' || path === '/index.html') return (await getSession(req, env)) ? page(INDEX_HTML) : redirect('/login');
+  if (path === '/login') return (await getSession(req, env)) ? redirect('/') : page(LOGIN_HTML);
+  if (path === '/admin') return page(ADMIN_HTML);
+
+  if (path === '/api/login' && m === 'POST') return login(req, env);
+  if (path === '/api/logout' && m === 'POST') return logout(req, env);
+  if (path === '/api/me' && m === 'GET') return me(req, env);
+  if (path === '/api/stats' && m === 'GET') {
+    const s = await getSession(req, env);
+    if (!s) throw new HttpError(401, 'Not signed in');
+    return json(await affiliatlyDays(s.acct, env));
+  }
+  if (path.startsWith('/api/admin/')) return admin(req, env, path, m);
+
+  return env.ASSETS ? env.ASSETS.fetch(req) : new Response('Not found', { status: 404 });
+}
 
 export default {
-  scheduled(_e, env, ctx) { ctx.waitUntil(check(env)); },
-
   async fetch(req, env) {
-    const u = new URL(req.url);
-    if (u.pathname === '/api/stats') {
-      const c = await getConfig(env);
-      if (c.DASH_KEY && req.headers.get('x-key') !== c.DASH_KEY) return json('{"error":"unauthorized"}', 401);
-      try { return json(JSON.stringify(await fetchStats(c, 364))); }
-      catch (e) { return json(JSON.stringify({ error: String(e.message || e) }), 502); }
-    }
-    if (u.pathname === '/test') {
-      const c = await getConfig(env);
-      if (!c.DASH_KEY || u.searchParams.get('key') !== c.DASH_KEY) return new Response('unauthorized', { status: 401 });
-      await push(c, '💰 Sales Ledger', '<b>Pushover is <font color="#d4a017">working</font></b>\nYou will get one message per sale.');
-      return new Response('Test message sent');
-    }
-    return env.ASSETS.fetch(req);
+    try { return await route(req, env); } catch (e) { return fail(e); }
+  },
+
+  async scheduled(event, env, ctx) {
+    const { keys } = await env.LEDGER.list({ prefix: 'acct:' });
+    ctx.waitUntil(Promise.allSettled(keys.map(k => checkAccount(env, k.name.slice(5)).catch(e => console.error(k.name, e.message)))));
   },
 };
