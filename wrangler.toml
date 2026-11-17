@@ -1,5 +1,6 @@
 # Merge these blocks into your existing wrangler.toml (keep your current name / routes / assets).
-name = "ledger"
+# wrangler.toml
+name = 'sales-ledger'
 main = "worker.js"
 compatibility_date = "2025-01-01"
 
