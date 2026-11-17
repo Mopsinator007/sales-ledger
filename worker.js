@@ -232,7 +232,7 @@ async function me(req, env) {
     extra['set-cookie'] = cookieHeader(s.token, SESSION_TTL);
   }
   const base = (a.aff_base || env.AFF_BASE || '').replace(/\/+$/, '');
-  return json({ username: a.username, name: a.name, admin: !!a.admin, goal: a.goal || 1000, panel: base ? base + '/affiliate.panel' : '' }, 200, extra);
+  return json({ username: a.username, name: a.name, admin: !!a.admin, goal: a.goal || 1000, tz: a.tz || env.TZ || '', panel: base ? base + '/affiliate.panel' : '' }, 200, extra);
 }
 
 // tolerate a stray space/newline or wrapping quotes in the stored secret (easy to paste in by accident)
