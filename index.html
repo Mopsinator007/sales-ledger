@@ -340,11 +340,17 @@ async function load(){
   if(!r.ok){let m='Error '+r.status;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}
   const j=await r.json();
   if(full)map={};
-  Object.values(j).forEach(d=>{if(!d||typeof d.date!=='string')return;const[dd,mm,yy]=d.date.split('.');if(!yy)return;
-   map[`${yy}-${mm}-${dd}`]={t:`${yy}-${mm}-${dd}`,orders:+d.orders||0,visits:+d.visits||0,sales:+d.sum_price_clean||0,earn:+d.sum_earnings_clean||0}});
+  const rows=Object.values(j).filter(d=>d&&typeof d.date==='string');
+  rows.forEach(d=>{let t=d.iso;if(!t){const[dd,mm,yy]=d.date.split('.');if(!yy)return;t=`${yy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`}
+   map[t]={t,orders:+d.orders||0,visits:+d.visits||0,sales:+d.sum_price_clean||0,earn:+d.sum_earnings_clean||0}});
   rebuild();
+  const hit=days.filter(d=>map[d.t]).length,ks=Object.keys(map).sort();
+  if(!hit){ // data arrived but none of it lines up with the calendar: say so instead of showing zeros
+   const m=$('#emsg');m.innerHTML='<b>Stats arrived, but no day matched</b>';
+   m.append(`Rows received: ${rows.length}. Dates seen: ${ks[0]||'none'} to ${ks[ks.length-1]||'none'}. Today is ${days[0].t}. Sample row: ${JSON.stringify(rows[0]||null)}`);
+   m.hidden=false;$('#app').hidden=true;setStatus('No matching data',true);return}
   $('#emsg').hidden=true;$('#app').hidden=false;render();
-  setStatus('Live, updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+  setStatus(`Live, ${hit} days of data, updated `+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
  }catch(e){
   setStatus('Could not load stats: '+e.message,true);
   if($('#app').hidden){const m=$('#emsg');m.innerHTML='<b>Couldn’t load your ledger</b>';m.append(e.message);m.hidden=false}
