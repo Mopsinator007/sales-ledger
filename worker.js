@@ -251,6 +251,9 @@ async function adminAuth(req, env) {
  * The one integration point. Each account has its own aff_id + aff_hash (and optionally
  * aff_base); the URL comes from the AFF_URL template. The response must contain one row per
  * day: { date: 'dd.mm.yyyy', orders, visits, sum_price_clean, sum_earnings_clean }.
+ *
+ * Rows are normalized below, so the site and the push notifications always get real
+ * numbers under those names, even if Affiliatly sends strings ("$12,50") or other key names.
  */
 
 function affUrl(a, env) {
@@ -273,6 +276,37 @@ function rowsOf(j, depth = 0) {
   return [];
 }
 
+// Parse "12.50", "$1,234.50", "1.234,50 €", 12.5 → number
+function num(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  let s = String(v ?? '').replace(/[^\d.,-]/g, '');
+  if (!s) return 0;
+  if (s.includes(',') && s.includes('.')) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (s.includes(',')) {
+    s = /,\d{1,2}$/.test(s) ? s.replace(',', '.') : s.replace(/,/g, '');
+  }
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+const pick = (r, names, re) => {
+  for (const k of names) if (r[k] !== undefined && r[k] !== null && r[k] !== '') return r[k];
+  const hit = Object.keys(r).find(k => re.test(k));
+  return hit ? r[hit] : 0;
+};
+
+function normRow(r) {
+  return {
+    ...r,
+    date: r.date,
+    orders: num(r.orders),
+    visits: num(r.visits),
+    sum_price_clean: num(pick(r, ['sum_price_clean', 'sum_price', 'sales', 'revenue'], /price|sale|revenue/i)),
+    sum_earnings_clean: num(pick(r, ['sum_earnings_clean', 'sum_earnings', 'earnings', 'commission', 'sum_commission'], /earn|commis/i)),
+  };
+}
+
 async function affiliatlyDays(a, env, debug = false) {
   const url = affUrl(a, env);
   let r;
@@ -283,7 +317,7 @@ async function affiliatlyDays(a, env, debug = false) {
   let j;
   try { j = JSON.parse(text); }
   catch { throw new HttpError(502, 'Affiliatly did not return JSON' + (debug ? `: ${JSON.stringify(text.slice(0, 160))}` : '. Check AFF_URL, the ID and the hash.')); }
-  return rowsOf(j);
+  return rowsOf(j).map(normRow);
 }
 
 /* ----------------------------------------------------------------- Pushover */
