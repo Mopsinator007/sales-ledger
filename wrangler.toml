@@ -30,7 +30,7 @@ DASH_URL = "https://ledger.itsmadebymo.com"
 AFF_BASE = "https://s2.affiliatly.com/af-1065200"
 # Affiliatly report link with placeholders. Must be the same link your current worker calls,
 # with the affiliate ID and hash swapped for {id} and {hash} (see SETUP.md step 3).
-AFF_URL = ""
+AFF_URL = "https://s2.affiliatly.com/af-1065200/affiliate/api/check_orders_by_date/2026-11-10/2026-11-17/{id}?hash={hash}"
 # Optional: one Pushover app token shared by all accounts (accounts can still override it).
 # PUSHOVER_TOKEN = ""
 
