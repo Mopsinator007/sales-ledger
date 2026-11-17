@@ -199,8 +199,8 @@ main{padding-bottom:env(safe-area-inset-bottom)}
 <section><div class="wrap stats">
 <div><span class="lbl">Sales volume</span><b id="s-sales">–</b></div>
 <div><span class="lbl">Orders</span><b id="s-orders">–</b></div>
-<div><span class="lbl">Visits</span><b id="s-visits">–</b></div>
-<div><span class="lbl">Conversion</span><b id="s-conv">–</b></div>
+<div><span class="lbl">Avg. order</span><b id="s-avg">–</b></div>
+<div><span class="lbl">Avg. commission</span><b id="s-avgc">–</b></div>
 </div></section>
 <section><div class="wrap stats rec">
 <div><span class="lbl" id="l-month">Top month</span><b id="r-month">–</b><small id="r-month2"></small></div>
@@ -253,10 +253,10 @@ function show(i){
  const nb=view.length,rc=sv.getBoundingClientRect(),cw=sv.parentElement.clientWidth,hl=$('#hl');
  if(hl){hl.setAttribute('x',i*1000/nb);hl.setAttribute('width',1000/nb);hl.setAttribute('opacity',1)}
  const row=(k,v)=>`<div class="r"><span>${k}</span><span>${v}</span></div>`,
-  conv=b.visits?(b.orders/b.visits*100).toFixed(1)+'%':'–',base=ctx.avg*b.n,vs=base>0?(b.earn-base)/base*100:null,
+  base=ctx.avg*b.n,vs=base>0?(b.earn-base)/base*100:null,
   star=b.n===1&&b.earn>0&&b.earn===ctx.bestE&&b.from===ctx.bestT;
  tip.innerHTML=`<div class="d">${b.n===1?fmtLong(b.from):fmtShort(b.from)+' – '+fmtShort(b.to,true)}</div><b>${usd(b.earn)}</b>`
-  +row('Orders',b.orders.toLocaleString('en-US'))+row('Visits',b.visits.toLocaleString('en-US'))+row('Sales volume',usd(b.sales))+row('Conversion',conv)
+  +row('Orders',b.orders.toLocaleString('en-US'))+row('Sales volume',usd(b.sales))+row('Avg order',b.orders?usd(b.sales/b.orders):'–')
   +(b.n>1?row('Avg per day',usd(b.earn/b.n)):'')
   +(vs===null?'':`<div class="r"><span>vs period avg</span><span class="${vs>=0?'up':''}">${vs>=0?'▲':'▼'} ${Math.abs(vs).toFixed(0)}%</span></div>`)
   +(star?'<div class="star">★ Best day of this period</div>':'');
@@ -273,15 +273,16 @@ document.addEventListener('pointerdown',e=>{if(!e.target.closest('#svg'))hide()}
 
 function render(){
  if(!days.length)return;
- const sm=a=>a.reduce((x,d)=>x+d.earn,0),m0=days[0].t.slice(0,7),dom=+days[0].t.slice(8);
- const N=period==='M'?dom:period,s=days.slice(0,N),sum=k=>s.reduce((a,d)=>a+d[k],0),earn=sum('earn'),orders=sum('orders'),visits=sum('visits');
+ const sm=a=>a.reduce((x,d)=>x+d.earn,0),m0=days[0].t.slice(0,7),dom=+days[0].t.slice(8),dim0=new Date(+m0.slice(0,4),+m0.slice(5),0).getDate();
+ const N=period==='M'?dom:period,s=days.slice(0,N),sum=k=>s.reduce((a,d)=>a+d[k],0),earn=sum('earn'),orders=sum('orders');
  const pl=period===1?'today':period==='M'?'this month':`last ${period} days`;
 
  /* hero + stat cards: everything follows the selected period */
- $('#cap').textContent=period===1?'Commission earned today':period==='M'?'Commission this month':`Commission, last ${period} days`;
+ const rg=period===1?fmtShort(days[0].t,true):period==='M'?`${fmtShort(m0+'-01')} – ${fmtShort(m0+'-'+String(dim0).padStart(2,'0'),true)}`:`${fmtShort(s[N-1].t)} – ${fmtShort(days[0].t,true)}`;
+ $('#cap').textContent=(period===1?'Commission earned today':period==='M'?'Commission this month':`Commission, last ${period} days`)+' · '+rg;
  count(earn);$('#today').textContent=usd(days[0].earn);
  $('#s-sales').textContent=usd(sum('sales'));$('#s-orders').textContent=orders.toLocaleString('en-US');
- $('#s-visits').textContent=visits.toLocaleString('en-US');$('#s-conv').textContent=visits?(orders/visits*100).toFixed(1)+'%':'–';
+ $('#s-avg').textContent=orders?usd(sum('sales')/orders):'–';$('#s-avgc').textContent=orders?usd(earn/orders):'–';
 
  /* monthly goal always tracks the current calendar month */
  const mtd=sm(days.filter(d=>d.t.startsWith(m0))),dim=new Date(+m0.slice(0,4),+m0.slice(5),0).getDate(),pct=Math.min(100,mtd/GOAL*100),pace=mtd/dom*dim;
@@ -309,7 +310,7 @@ function render(){
  /* chart: one bar per day; the 365 view uses one bar per week so it stays readable */
  const ak=String(period);sv.classList.toggle('anim',ak!==window._ak);window._ak=ak;
  const weekly=period===365,n=weekly?364:Math.max(N,7),B=weekly?7:1,c=days.slice(0,n).reverse();
- view=[];for(let i=0;i<c.length;i+=B){const g=c.slice(i,i+B),t=k=>g.reduce((a,d)=>a+d[k],0);view.push({from:g[0].t,to:g[g.length-1].t,n:g.length,earn:t('earn'),orders:t('orders'),visits:t('visits'),sales:t('sales')})}
+ view=[];for(let i=0;i<c.length;i+=B){const g=c.slice(i,i+B),t=k=>g.reduce((a,d)=>a+d[k],0);view.push({from:g[0].t,to:g[g.length-1].t,n:g.length,earn:t('earn'),orders:t('orders'),sales:t('sales')})}
  ctx={avg:earn/N,bestT:bd.t,bestE:bd.earn};
  const nb=view.length,max=Math.max(...view.map(b=>b.earn),1),w=1000/nb;
  sv.innerHTML='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3d3d"/><stop offset="1" stop-color="#8a1218"/></linearGradient></defs>'+
