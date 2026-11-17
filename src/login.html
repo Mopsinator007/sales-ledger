@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0c0c0e">
+<link rel="apple-touch-icon" href="/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Ledger">
+<meta name="color-scheme" content="dark">
+<title>Sign in · Sales Ledger</title>
+<link rel="icon" type="image/x-icon" href="/public/favicon.ico">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#0c0c0e;--ink:#eeece9;--muted:#95929a;--red:#ff3d3d;--fill:#e5242a;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.22);--glow:rgba(255,61,61,.17);--grid:rgba(255,255,255,.075);--disp:"Archivo","Helvetica Neue",Arial,sans-serif;--cell:16px}
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg)}
+body{color:var(--ink);font:400 17px/1.6 var(--disp);min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));overflow-x:hidden;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:var(--cell) var(--cell);background-position:-1px -1px;-webkit-mask-image:radial-gradient(130% 90% at 50% 0%,#000 30%,rgba(0,0,0,.35));mask-image:radial-gradient(130% 90% at 50% 0%,#000 30%,rgba(0,0,0,.35))}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse 45% 40% at 85% 0%,rgba(255,61,61,.10),transparent 70%),radial-gradient(ellipse 40% 35% at 0% 100%,rgba(90,10,22,.22),transparent 70%)}
+
+.card{position:relative;width:min(100%,420px);padding:40px 36px 36px;background:rgba(18,18,21,.78);border:1px solid var(--line2);box-shadow:0 40px 90px -30px rgba(0,0,0,.55),0 0 80px -20px var(--glow);animation:up .8s cubic-bezier(.2,.7,.2,1) both}
+.card::after{content:"";position:absolute;inset:12px;pointer-events:none;--c:rgba(255,255,255,.6);background:linear-gradient(var(--c),var(--c)) 0 0/14px 1px no-repeat,linear-gradient(var(--c),var(--c)) 0 0/1px 14px no-repeat,linear-gradient(var(--c),var(--c)) 100% 0/14px 1px no-repeat,linear-gradient(var(--c),var(--c)) 100% 0/1px 14px no-repeat,linear-gradient(var(--c),var(--c)) 0 100%/14px 1px no-repeat,linear-gradient(var(--c),var(--c)) 0 100%/1px 14px no-repeat,linear-gradient(var(--c),var(--c)) 100% 100%/14px 1px no-repeat,linear-gradient(var(--c),var(--c)) 100% 100%/1px 14px no-repeat}
+.logo{display:flex;align-items:center;gap:12px;font-weight:800;font-stretch:112%;font-size:20px;letter-spacing:-.03em}
+.dm{width:10px;height:10px;border-radius:50%;background:var(--red);animation:ping 2s infinite;flex:none}
+h1{font:800 clamp(36px,9vw,46px)/1 var(--disp);font-stretch:112%;letter-spacing:-.04em;margin:34px 0 10px}
+.sub{color:var(--muted);font-size:15px;margin-bottom:8px}
+.lbl{display:block;margin:20px 0 8px;font:500 12px var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.lbl::before{content:"";display:inline-block;width:7px;height:7px;background:var(--red);margin-right:10px}
+input{width:100%;background:transparent;border:1px solid var(--line2);color:var(--ink);padding:14px;font:400 17px var(--disp);border-radius:0;transition:border-color .2s,box-shadow .2s}
+input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px var(--glow)}
+button{width:100%;margin-top:28px;font:600 15px var(--disp);background:var(--fill);color:#fff;border:0;padding:15px 28px;cursor:pointer;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);transition:background .25s,color .25s,transform .2s}
+button:hover{background:var(--ink);color:var(--bg)}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.6;cursor:wait}
+#err{min-height:24px;margin-top:16px;color:var(--red);font-size:15px}
+
+@keyframes ping{70%{box-shadow:0 0 0 9px rgba(255,61,61,0)}0%{box-shadow:0 0 0 0 rgba(255,61,61,.6)}}
+@keyframes up{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@media(max-width:480px){.card{padding:32px 24px 28px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<form class="card" id="f">
+  <span class="logo"><i class="dm"></i>Sales Ledger</span>
+  <h1>Sign in</h1>
+  <p class="sub">Use the login you were given. You'll only see your own commission.</p>
+  <label class="lbl" for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+  <label class="lbl" for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <p id="err" role="alert"></p>
+  <button id="go">Sign in</button>
+</form>
+<script>
+const $=s=>document.querySelector(s);
+fetch('/api/me',{cache:'no-store'}).then(r=>{if(r.ok)location.replace('/')}).catch(()=>{});
+$('#f').onsubmit=async e=>{
+ e.preventDefault();
+ const b=$('#go'),er=$('#err');er.textContent='';b.disabled=true;b.textContent='Signing in…';
+ try{
+  const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:$('#u').value,password:$('#p').value})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok){location.replace('/');return}
+  er.textContent=j.error||'Could not sign in';
+ }catch(x){er.textContent='Network problem. Try again.'}
+ b.disabled=false;b.textContent='Sign in';
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c0e">
+<meta name="color-scheme" content="dark">
+<title>Accounts · Sales Ledger</title>
+<link rel="icon" type="image/x-icon" href="/public/favicon.ico">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#0c0c0e;--panel:#121215;--ink:#eeece9;--muted:#95929a;--red:#ff3d3d;--fill:#e5242a;--ok:#5ad19a;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.22);--glow:rgba(255,61,61,.17);--nav:rgba(12,12,14,.8);--grid:rgba(255,255,255,.075);--disp:"Archivo","Helvetica Neue",Arial,sans-serif;--cell:16px}
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg)}
+body{color:var(--ink);font:400 17px/1.6 var(--disp);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+[hidden]{display:none!important}
+a{color:inherit}
+.wrap{width:min(1200px,100% - clamp(32px,8vw,128px));margin:0 auto}
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:var(--cell) var(--cell);background-position:-1px -1px;-webkit-mask-image:radial-gradient(130% 90% at 50% 0%,#000 30%,rgba(0,0,0,.35));mask-image:radial-gradient(130% 90% at 50% 0%,#000 30%,rgba(0,0,0,.35))}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse 45% 40% at 85% 0%,rgba(255,61,61,.10),transparent 70%),radial-gradient(ellipse 40% 35% at 0% 100%,rgba(90,10,22,.22),transparent 70%)}
+
+nav{position:sticky;top:0;z-index:20;padding-top:env(safe-area-inset-top,0px);background:var(--nav);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:12px;font-weight:800;font-stretch:112%;font-size:22px;letter-spacing:-.03em}
+.dm{width:10px;height:10px;border-radius:50%;background:var(--red);animation:ping 2s infinite;flex:none}
+.logo small{font:500 12px var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line2);padding:3px 8px;font-stretch:100%}
+.back{padding:9px 16px;border:1px solid var(--red);text-decoration:none;font:600 14px var(--disp);transition:background .25s,color .25s}
+.back:hover{background:var(--fill);color:#fff}
+
+main{padding:clamp(32px,5vw,64px) 0 96px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:28px}
+h1{font:800 clamp(36px,6vw,64px)/1 var(--disp);font-stretch:112%;letter-spacing:-.04em}
+h2{font:800 clamp(20px,2.6vw,26px)/1.1 var(--disp);font-stretch:110%;letter-spacing:-.03em}
+.lbl{font:500 12px var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.lbl::before{content:"";display:inline-block;width:7px;height:7px;background:var(--red);margin-right:10px}
+.muted{color:var(--muted);font-size:15px}
+
+.btn{font:600 15px var(--disp);color:var(--ink);background:transparent;border:0;box-shadow:inset 0 0 0 1px var(--line2);padding:12px 20px;cursor:pointer;transition:background .25s,color .25s,box-shadow .25s,transform .2s}
+.btn:hover{box-shadow:inset 0 0 0 1px var(--red)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn.pri{background:var(--fill);color:#fff;box-shadow:none;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
+.btn.pri:hover{background:var(--ink);color:var(--bg)}
+.btn.danger:hover{box-shadow:inset 0 0 0 1px var(--red);color:var(--red)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+
+.panelbox{padding:26px 28px;border:1px solid var(--line);background:rgba(18,18,21,.72)}
+#keyform{max-width:460px;margin:8vh auto}
+#keyform p{margin:10px 0 18px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+
+.banner{margin-bottom:20px;padding:14px 18px;border:1px solid var(--red);background:rgba(255,61,61,.07);font-size:15px}
+.banner code,.note code{font:500 14px ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,.08);padding:1px 6px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.acct{padding:22px 24px;border:1px solid var(--line);background:rgba(18,18,21,.72);display:flex;flex-direction:column;gap:14px;transition:border-color .3s,transform .3s,box-shadow .3s}
+.acct:hover{border-color:var(--red);transform:translateY(-3px);box-shadow:0 14px 34px -16px rgba(255,61,61,.45)}
+.acct b{display:block;font:800 26px/1.1 var(--disp);font-stretch:110%;letter-spacing:-.03em}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font:500 12px var(--disp);letter-spacing:.06em;padding:3px 9px;border:1px solid var(--line2);color:var(--muted)}
+.tag.ok{color:var(--ok);border-color:rgba(90,209,154,.45)}
+.tag.warn{color:var(--red);border-color:rgba(255,61,61,.5)}
+.acct .btn{align-self:flex-start;margin-top:auto}
+
+#ed{margin-bottom:28px}
+#ed h2{margin:4px 0 4px}
+fieldset{border:0;margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
+legend{padding-right:12px;float:left;width:100%;margin-bottom:14px}
+.cols{clear:both;display:grid;grid-template-columns:1fr 1fr;gap:16px 20px}
+.f{display:flex;flex-direction:column;gap:7px;min-width:0}
+.f>span{font:500 12px var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.f small{color:var(--muted);font-size:13px}
+.f.full{grid-column:1/-1}
+input[type=text],input[type=password],input[type=number]{width:100%;background:transparent;border:1px solid var(--line2);color:var(--ink);padding:13px 14px;font:400 17px var(--disp);border-radius:0;transition:border-color .2s,box-shadow .2s}
+input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px var(--glow)}
+input:disabled{opacity:.55}
+input::placeholder{color:#6d6a72}
+.pw{display:flex;gap:8px}
+.pw .btn{flex:none;padding:0 16px}
+.chk{display:flex;align-items:center;gap:10px;cursor:pointer;min-height:48px;font-size:16px}
+.chk input{width:18px;height:18px;accent-color:var(--fill);flex:none}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px;align-items:center}
+.actions .spacer{flex:1}
+#res{margin-top:16px;font-size:15px;min-height:24px;overflow-wrap:anywhere}
+#res.ok{color:var(--ok)}#res.bad{color:var(--red)}
+#share{margin-top:18px;padding:16px 18px;border:1px dashed var(--line2);background:rgba(255,255,255,.03)}
+#share pre{font:500 14px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 12px}
+#toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:50;padding:12px 20px;background:var(--ink);color:var(--bg);font:600 15px var(--disp);max-width:calc(100% - 32px);animation:up .3s both}
+#toast.bad{background:var(--fill);color:#fff}
+
+@keyframes ping{70%{box-shadow:0 0 0 9px rgba(255,61,61,0)}0%{box-shadow:0 0 0 0 rgba(255,61,61,.6)}}
+@keyframes up{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+@media(max-width:640px){
+ nav .wrap{height:58px}.logo{font-size:19px;gap:10px}.logo small{display:none}
+ .panelbox{padding:20px 18px}
+ .cols{grid-template-columns:1fr}
+ .actions .btn{flex:1 1 auto}
+}
+@media(hover:none){.acct:hover{transform:none;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<nav><div class="wrap"><span class="logo"><i class="dm"></i>Sales Ledger <small>Admin</small></span><a class="back" href="/">← Ledger</a></div></nav>
+<main class="wrap">
+
+  <form id="keyform" class="panelbox" hidden>
+    <span class="lbl">Admin access</span>
+    <p class="muted">Enter the admin key to manage accounts, or <a href="/login">sign in</a> with an admin account.</p>
+    <div class="row"><input id="keyin" type="password" placeholder="Admin key" autocomplete="off" style="flex:1;min-width:200px;background:transparent;border:1px solid var(--line2);color:var(--ink);padding:13px 14px;font:400 17px var(--disp);border-radius:0"><button class="btn pri">Unlock</button></div>
+    <p id="kerr" style="color:var(--red);font-size:15px;margin:12px 0 0"></p>
+  </form>
+
+  <div id="panel" hidden>
+    <div class="head">
+      <div><span class="lbl">Ledger</span><h1>Accounts</h1></div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div id="warn"></div>
+
+    <form id="ed" class="panelbox" hidden autocomplete="off">
+      <span class="lbl" id="ed-kind">New account</span>
+      <h2 id="ed-title">New account</h2>
+
+      <fieldset>
+        <legend class="lbl">Login</legend>
+        <div class="cols">
+          <label class="f"><span>Username</span><input type="text" id="f-username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24" placeholder="emery" required><small>a–z, 0–9, _ or -</small></label>
+          <label class="f"><span>Display name</span><input type="text" id="f-name" maxlength="40" placeholder="Emery"></label>
+          <label class="f"><span>Password</span><div class="pw"><input type="text" id="f-password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200"><button type="button" class="btn" id="gen">Generate</button></div><small id="pw-hint"></small></label>
+          <label class="f"><span>Monthly goal ($)</span><input type="number" id="f-goal" min="1" step="any" placeholder="1000"></label>
+          <label class="f"><span>Timezone</span><input type="text" id="f-tz" autocapitalize="none" spellcheck="false" placeholder="Europe/Berlin"></label>
+          <label class="chk" style="align-self:end"><input type="checkbox" id="f-admin"> Can manage accounts (admin)</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="lbl">Affiliatly</legend>
+        <div class="cols">
+          <label class="f"><span>Affiliate ID</span><input type="text" id="f-aff_id" autocapitalize="none" spellcheck="false" placeholder="91"></label>
+          <label class="f"><span>API hash</span><input type="text" id="f-aff_hash" autocapitalize="none" spellcheck="false"></label>
+          <label class="f full"><span>Program base URL <em style="font-style:normal;text-transform:none;letter-spacing:0">(optional)</em></span><input type="text" id="f-aff_base" autocapitalize="none" spellcheck="false"><small>Leave blank to use the worker default.</small></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="lbl">Pushover</legend>
+        <div class="cols">
+          <label class="f"><span>User key</span><input type="text" id="f-pushover_user" autocapitalize="none" spellcheck="false"><small>The person's own key, shown on their Pushover dashboard.</small></label>
+          <label class="f"><span>App token</span><input type="text" id="f-pushover_token" autocapitalize="none" spellcheck="false"><small id="tok-hint">Can be the same token for everyone.</small></label>
+          <label class="chk"><input type="checkbox" id="f-notify" checked> Push a notification for every new sale</label>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button class="btn pri" id="save">Save account</button>
+        <button type="button" class="btn" id="t-aff">Test Affiliatly</button>
+        <button type="button" class="btn" id="t-push">Test Pushover</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn danger" id="del">Delete</button>
+        <button type="button" class="btn" id="cancel">Close</button>
+      </div>
+      <p id="res" role="status"></p>
+      <div id="share" hidden>
+        <span class="lbl">Send this to them</span>
+        <pre id="share-text"></pre>
+        <button type="button" class="btn" id="copy">Copy</button>
+      </div>
+    </form>
+
+    <div class="grid" id="list"></div>
+  </div>
+</main>
+<div id="toast" hidden></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PRESETS=[['mo','Mo',true],['emery','Emery',false],['asta','Asta',false],['gabe','Gabe',false]];
+const FIELDS=['username','name','password','goal','tz','aff_id','aff_hash','aff_base','pushover_user','pushover_token'];
+let key=null;try{key=sessionStorage.getItem('adminkey')}catch(e){}
+let data={accounts:[],defaults:{}},editing=null;
+
+function toast(t,bad){const el=$('#toast');el.textContent=t;el.className=bad?'bad':'';el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3200)}
+function res(t,kind){const r=$('#res');r.textContent=t;r.className=kind||''}
+
+async function api(path,method='GET',body){
+ const h={};if(body)h['content-type']='application/json';if(key)h['x-admin-key']=key;
+ const r=await fetch('/api/admin/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined,cache:'no-store'});
+ const j=await r.json().catch(()=>({}));
+ if(r.status===401)throw Object.assign(new Error(j.error||'Not allowed'),{auth:true});
+ if(!r.ok)throw new Error(j.error||'Error '+r.status);
+ return j;
+}
+
+async function load(){
+ try{
+  data=await api('accounts');
+  $('#keyform').hidden=true;$('#panel').hidden=false;draw();
+ }catch(e){
+  if(e.auth){
+   $('#panel').hidden=true;$('#keyform').hidden=false;
+   if(key){$('#kerr').textContent='That key didn’t work.';key=null;try{sessionStorage.removeItem('adminkey')}catch(x){}}
+  }else if(!$('#keyform').hidden){$('#kerr').textContent=e.message}
+  else toast(e.message,true);
+ }
+}
+$('#keyform').onsubmit=e=>{
+ e.preventDefault();key=$('#keyin').value.trim();$('#kerr').textContent='';
+ try{sessionStorage.setItem('adminkey',key)}catch(x){}
+ load();
+};
+
+function draw(){
+ const d=data.defaults||{},have=new Set(data.accounts.map(a=>a.username));
+ $('#warn').innerHTML=d.has_aff_url?'':'<div class="banner"><b>AFF_URL isn’t set on the worker yet.</b> Accounts can be created, but no stats will load until you add it (see SETUP.md).</div>';
+ $('#chips').innerHTML=PRESETS.filter(p=>!have.has(p[0])).map(p=>`<button type="button" class="btn" data-new="${p[0]}">+ ${esc(p[1])}</button>`).join('')+'<button type="button" class="btn pri" data-new="">New account</button>';
+ $('#list').innerHTML=data.accounts.map(a=>{
+  const aff=a.has_aff_hash&&a.aff_id,push=a.has_pushover_user;
+  return `<article class="acct"><div><b>${esc(a.name)}</b><span class="lbl" style="display:block;margin-top:6px">@${esc(a.username)}</span></div>
+  <div class="tags">${a.admin?'<span class="tag">Admin</span>':''}
+  <span class="tag ${aff?'ok':'warn'}">${aff?'Affiliatly linked':'No Affiliatly'}</span>
+  <span class="tag ${push&&a.notify?'ok':push?'':'warn'}">${push?(a.notify?'Pushover on':'Pushover paused'):'No Pushover'}</span></div>
+  <button type="button" class="btn" data-edit="${esc(a.username)}">Edit</button></article>`}).join('')||'<p class="muted">No accounts yet. Start with the buttons above.</p>';
+}
+
+document.addEventListener('click',e=>{
+ const n=e.target.closest('[data-new]'),ed=e.target.closest('[data-edit]');
+ if(n){const p=PRESETS.find(x=>x[0]===n.dataset.new);openEd(null,p)}
+ else if(ed)openEd(data.accounts.find(a=>a.username===ed.dataset.edit));
+});
+
+function pwgen(){const al='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789',b=crypto.getRandomValues(new Uint8Array(14));return[...b].map(x=>al[x%al.length]).join('')}
+$('#gen').onclick=()=>{$('#f-password').value=pwgen()};
+
+function openEd(a,preset){
+ editing=a?a.username:null;
+ const d=data.defaults||{};
+ $('#ed').hidden=false;res('');$('#share').hidden=true;
+ $('#ed-kind').textContent=a?'Edit account':'New account';
+ $('#ed-title').textContent=a?a.name:(preset?preset[1]:'New account');
+ const set=(k,v)=>$('#f-'+k).value=v??'';
+ set('username',a?a.username:(preset?preset[0]:''));$('#f-username').disabled=!!a;
+ set('name',a?a.name:(preset?preset[1]:''));
+ set('password','');$('#pw-hint').textContent=a?'Leave blank to keep the current password.':'At least 8 characters. Use Generate to make one.';
+ if(!a)$('#f-password').value=pwgen();
+ set('goal',a?a.goal:'');set('tz',a?a.tz:'');$('#f-tz').placeholder=d.tz||'Europe/Berlin';
+ set('aff_id',a?a.aff_id:'');set('aff_hash','');$('#f-aff_hash').placeholder=a&&a.has_aff_hash?a.aff_hash+' (leave blank to keep)':'';
+ set('aff_base',a?a.aff_base:'');$('#f-aff_base').placeholder=d.aff_base||'https://s2.affiliatly.com/af-…';
+ set('pushover_user','');$('#f-pushover_user').placeholder=a&&a.has_pushover_user?a.pushover_user+' (leave blank to keep)':'';
+ set('pushover_token','');$('#f-pushover_token').placeholder=a&&a.has_pushover_token?a.pushover_token+' (leave blank to keep)':d.has_pushover_token?'Using the worker default token':'';
+ $('#f-admin').checked=a?a.admin:!!(preset&&preset[2]);
+ $('#f-notify').checked=a?a.notify:true;
+ for(const id of ['t-aff','t-push','del'])$('#'+id).hidden=!a;
+ $('#ed').scrollIntoView({behavior:'smooth',block:'start'});
+ (a?$('#f-name'):$('#f-password')).focus({preventScroll:true});
+}
+$('#cancel').onclick=()=>{$('#ed').hidden=true;editing=null};
+
+$('#ed').onsubmit=async e=>{
+ e.preventDefault();
+ const u=$('#f-username').value.trim().toLowerCase();
+ const body={name:$('#f-name').value,goal:$('#f-goal').value,tz:$('#f-tz').value,aff_id:$('#f-aff_id').value,aff_hash:$('#f-aff_hash').value,aff_base:$('#f-aff_base').value,pushover_user:$('#f-pushover_user').value,pushover_token:$('#f-pushover_token').value,admin:$('#f-admin').checked,notify:$('#f-notify').checked};
+ const pw=$('#f-password').value;if(pw)body.password=pw;
+ const b=$('#save');b.disabled=true;res('Saving…');
+ try{
+  const j=await api('accounts/'+encodeURIComponent(u),'PUT',body);
+  res(j.created?'Account created.':'Saved.','ok');
+  const wasNew=!editing;editing=u;
+  data=await api('accounts');draw();
+  const a=data.accounts.find(x=>x.username===u);
+  if(a)openEdKeep(a);
+  if(pw){$('#share-text').textContent=`Sales Ledger\n${location.origin}/login\nUsername: ${u}\nPassword: ${pw}`;$('#share').hidden=false}
+  if(wasNew)toast('Created '+(a?a.name:u));
+ }catch(x){res(x.message,'bad')}
+ b.disabled=false;
+};
+// refresh the editor's placeholders/buttons for the saved account without wiping the result line
+function openEdKeep(a){
+ const msg=$('#res').textContent,cls=$('#res').className,share=$('#share').hidden,st=$('#share-text').textContent;
+ const y=scrollY;openEd(a);scrollTo(0,y);
+ res(msg,cls);$('#share').hidden=share;$('#share-text').textContent=st;
+}
+
+async function testCall(kind,btn){
+ if(!editing)return;
+ const label=btn.textContent;btn.disabled=true;btn.textContent='Testing…';res('');
+ try{
+  const j=await api(`accounts/${encodeURIComponent(editing)}/test-${kind}`,'POST');
+  if(!j.ok)res(j.error,'bad');
+  else if(kind==='pushover')res('Sent. Check your phone for the notification.','ok');
+  else res(`Affiliatly is responding: ${j.days} day${j.days===1?'':'s'} of data.`+(j.sample?` First row: ${JSON.stringify(j.sample)}`:''),'ok');
+ }catch(x){res(x.message,'bad')}
+ btn.disabled=false;btn.textContent=label;
+}
+$('#t-aff').onclick=e=>testCall('affiliatly',e.currentTarget);
+$('#t-push').onclick=e=>testCall('pushover',e.currentTarget);
+
+$('#del').onclick=async()=>{
+ if(!editing||!confirm(`Delete ${editing}? Their login stops working immediately.`))return;
+ try{await api('accounts/'+encodeURIComponent(editing),'DELETE');toast('Deleted '+editing);$('#ed').hidden=true;editing=null;data=await api('accounts');draw()}
+ catch(x){res(x.message,'bad')}
+};
+$('#copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#share-text').textContent);toast('Copied')}catch(e){toast('Select and copy it manually',true)}};
+
+load();
+</script>
+</body>
+</html>
